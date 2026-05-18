@@ -1,0 +1,30 @@
+build/
+cmake-build-*/
+.DS_Store
+*.user
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Project-local AI config
+CLAUDE.md
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# JUCE (fetched by CMake)
+JUCE/
+
+# Plugin build artefacts
+*.vst3
+*.component
+*.app
+
+# Coverage-generated files — Codecov hosts these now; we never commit them.
+coverage.info
+coverage-html/
+docs/coverage/
+docs/badges/

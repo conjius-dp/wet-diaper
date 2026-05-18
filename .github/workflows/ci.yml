@@ -1,0 +1,245 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect whether this push / PR actually touches code. Build jobs gate on
+  # this so docs-only changes skip cleanly — GitHub treats skipped required
+  # status checks as success, so branch-protection doesn't block the merge.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!Assets/badges/**'
+              - '!docs/**'
+              - '!LICENSE'
+              - '!.gitignore'
+              - '!.gitattributes'
+              - '!.github/ISSUE_TEMPLATE/**'
+              - '!.github/PULL_REQUEST_TEMPLATE*'
+
+  build-and-test-macos:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: brew install ccache lcov
+
+      - name: Cache JUCE
+        id: cache-juce
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-8.0.12
+
+      - name: Clone JUCE
+        if: steps.cache-juce.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch 8.0.12 https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ccache
+          key: ccache-ci-${{ hashFiles('Source/**', 'Tests/**', 'CMakeLists.txt') }}
+          restore-keys: ccache-ci-
+
+      - name: Configure
+        # -O1 for CI — compiles much faster than -O3 (release default); tests and
+        # pluginval still run fine. Release workflow keeps -O3 for production.
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS_RELEASE="-O1 -DNDEBUG" \
+            -DCMAKE_C_FLAGS_RELEASE="-O1 -DNDEBUG" \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_FLAGS="--coverage" \
+            -DCMAKE_C_FLAGS="--coverage"
+
+      - name: Build plugin + tests (single invocation, shared JUCE objects)
+        # Only the targets CI needs: VST3 for pluginval + tests binary. Skipping
+        # Standalone/AU/Screenshot alone cuts ~half the JUCE module compilations.
+        run: cmake --build build --target WetDiaper_VST3 WetDiaperTests
+
+      - name: ccache stats
+        run: ccache -s
+
+      - name: Run tests
+        run: ./build/WetDiaperTests
+
+      - name: Cache pluginval
+        uses: actions/cache@v4
+        with:
+          path: pluginval.app
+          key: pluginval-macos-latest
+
+      - name: Validate VST3 with pluginval
+        run: |
+          if [ ! -d pluginval.app ]; then
+            curl -LO https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+            unzip -o pluginval_macOS.zip
+          fi
+          pluginval.app/Contents/MacOS/pluginval --validate build/WetDiaper_artefacts/Release/VST3/wet-diaper.vst3 --strictness-level 5
+
+      - name: Generate coverage info
+        run: |
+          lcov --capture --directory build --output-file coverage.info \
+               --ignore-errors inconsistent,format,count
+          lcov --remove coverage.info '*/JUCE/*' '*/tests/*' '/usr/*' '*/build/*' '*/Frameworks/*' \
+               --output-file coverage.info --ignore-errors unused,inconsistent,format
+          lcov --list coverage.info --ignore-errors inconsistent,format
+
+      - name: Publish coverage badge data to gh-pages
+        # Extracts the line coverage % from lcov and writes a small JSON file
+        # (shields.io "endpoint" schema) to the gh-pages branch. The README
+        # renders it via https://img.shields.io/endpoint?url=...
+        # Nothing is committed to main; the gh-pages branch already hosts the
+        # screenshot, so this is consistent with how screenshots are published.
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LINE_PCT=$(lcov --summary coverage.info --ignore-errors inconsistent,format 2>&1 | grep 'lines\.\.\.' | sed 's/.*: *\([0-9.]*\)%.*/\1/')
+          echo "Line coverage: ${LINE_PCT}%"
+
+          if [ "$(echo "$LINE_PCT >= 80" | bc)" -eq 1 ]; then
+            COLOR="brightgreen"
+          elif [ "$(echo "$LINE_PCT >= 60" | bc)" -eq 1 ]; then
+            COLOR="yellow"
+          else
+            COLOR="red"
+          fi
+
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          TMPDIR=$(mktemp -d)
+          if ! git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git clone "$REPO_URL" "$TMPDIR"
+            cd "$TMPDIR"
+            git checkout --orphan gh-pages
+            git rm -rf . 2>/dev/null || true
+          else
+            git clone --branch gh-pages --depth 1 "$REPO_URL" "$TMPDIR"
+            cd "$TMPDIR"
+          fi
+
+          cat > coverage.json <<JSON
+          {
+            "schemaVersion": 1,
+            "label": "coverage",
+            "message": "${LINE_PCT}%",
+            "color": "${COLOR}"
+          }
+          JSON
+
+          touch .nojekyll
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add coverage.json .nojekyll
+          if git diff --cached --quiet; then
+            echo "Coverage unchanged, skipping commit"
+          else
+            git commit -m "Update coverage badge to ${LINE_PCT}%"
+            git push origin gh-pages
+          fi
+
+  build-and-test-windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-latest
+    env:
+      # Local disk cache for sccache (GHA backend is flaky — periodic outages return
+      # HTML errors). actions/cache below persists the directory across runs.
+      SCCACHE_DIR: ${{ github.workspace }}\sccache
+      SCCACHE_CACHE_SIZE: 2G
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Setup MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache JUCE
+        id: cache-juce
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-8.0.12
+
+      - name: Clone JUCE
+        if: steps.cache-juce.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch 8.0.12 https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Cache sccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: sccache-ci-windows-${{ hashFiles('Source/**', 'Tests/**', 'CMakeLists.txt') }}
+          restore-keys: sccache-ci-windows-
+
+      - name: Configure
+        # /O1 for CI — faster compile than /O2 (release default). Release workflow keeps /O2.
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS_RELEASE="/O1 /DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="/O1 /DNDEBUG" -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_C_COMPILER_LAUNCHER=sccache
+
+      - name: Build plugin + tests (parallel)
+        run: cmake --build build --target WetDiaper_VST3 WetDiaperTests
+
+      - name: Run tests
+        # The test binary must run under cmd (not pwsh) to get proper
+        # stdout/stderr merge. pwsh buffers stderr oddly and swallows the
+        # first few lines on an abnormal exit.
+        shell: cmd
+        run: |
+          for /f "delims=" %%f in ('where /r build WetDiaperTests.exe') do set "TEST_EXE=%%f"
+          echo Test binary: %TEST_EXE%
+          if not defined TEST_EXE ( echo WetDiaperTests.exe not found & exit /b 1 )
+          "%TEST_EXE%" 2>&1
+          echo ExitCode=%ERRORLEVEL%
+          exit /b %ERRORLEVEL%
+
+      - name: sccache stats
+        run: sccache --show-stats
+
+      - name: Cache pluginval
+        uses: actions/cache@v4
+        with:
+          path: pluginval
+          key: pluginval-windows-latest
+
+      - name: Validate VST3 with pluginval
+        run: |
+          if (-not (Test-Path pluginval/pluginval.exe)) {
+            Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval_Windows.zip
+            Expand-Archive pluginval_Windows.zip -DestinationPath pluginval
+          }
+          pluginval\pluginval.exe --validate build\WetDiaper_artefacts\Release\VST3\wet-diaper.vst3 --strictness-level 5
+        shell: pwsh
