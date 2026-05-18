@@ -1,6 +1,3 @@
-// Headless CLI that renders the plugin editor to a single PNG.
-// Usage: WetDiaperScreenshot <output.png> [width] [height] [scaleFactor]
-
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -45,14 +42,12 @@ int main(int argc, char** argv)
     const int blockSize = 512;
     processor.prepareToPlay(sampleRate, blockSize);
 
-    // Feed some audio through so the plugin is in a valid state
     {
         juce::AudioBuffer<float> buf(2, blockSize);
         juce::MidiBuffer midi;
         for (int i = 0; i < 10; ++i)
         {
             buf.clear();
-            // Generate a sine wave
             for (int n = 0; n < blockSize; ++n)
             {
                 float s = 0.5f * std::sin(2.0f * 3.14159f * 440.0f * static_cast<float>(n) / static_cast<float>(sampleRate));
@@ -76,7 +71,6 @@ int main(int argc, char** argv)
 
     auto snap = editor->createComponentSnapshot(editor->getLocalBounds(), false, scale);
 
-    // Crop and mask corners
     {
         const float widthScale = static_cast<float>(width) / static_cast<float>(KnobDesign::defaultWidth);
         const int insetPx = static_cast<int>(20.0f * widthScale * scale);

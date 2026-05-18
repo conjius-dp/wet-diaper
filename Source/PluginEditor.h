@@ -6,7 +6,6 @@
 #include "BypassButton.h"
 #include "BinaryData.h"
 
-// Slider subclass that delegates double-click to the editor
 class AnimatedSlider : public juce::Slider
 {
 public:
@@ -85,12 +84,10 @@ private:
 
     std::unique_ptr<juce::ResizableCornerComponent> resizer;
 
-    // Conjius logo hover
     juce::Rectangle<int> logoBounds;
     bool  logoHoverTarget   = false;
     float logoHoverProgress = 0.0f;
 
-    // Snap-to-default animation
     struct SliderAnimation
     {
         bool active = false;

@@ -44,15 +44,12 @@ public:
             od.setDrive(1.0f);
             od.setTone(100.0f);
 
-            // With preGain=30 and drive=1, input 0.5 -> tanh(15) ~= 1.0
-            // So even low drive saturates a hot signal
             std::vector<float> warmup(4096, 0.01f);
             od.processMono(warmup.data(), 4096);
 
             std::vector<float> buf(512, 0.01f);
             od.processMono(buf.data(), 512);
 
-            // tanh(0.01 * 30 * 1) = tanh(0.3) ~= 0.291
             float last = buf.back();
             expect(last > 0.1f && last < 0.5f,
                    "low drive with quiet input should produce moderate output");
@@ -71,10 +68,8 @@ public:
             std::vector<float> buf(512, 0.01f);
             od.processMono(buf.data(), 512);
 
-            // tanh(0.01 * 30 * 100) = tanh(30) ~= 1.0
             float last = buf.back();
-            expect(last > 0.9f,
-                   "high drive should clip to near 1.0");
+            expect(last > 0.9f, "high drive should clip to near 1.0");
         }
 
         beginTest("output is bounded [-1, 1]");
@@ -91,10 +86,7 @@ public:
             od.processMono(buf.data(), 1024);
 
             for (auto s : buf)
-            {
-                expect(s >= -1.01f && s <= 1.01f,
-                       "output should be bounded");
-            }
+                expect(s >= -1.01f && s <= 1.01f, "output should be bounded");
         }
 
         beginTest("tone=0 is dark (attenuates highs)");
@@ -102,23 +94,20 @@ public:
             Overdrive od;
             od.prepare(44100.0, 512);
             od.setDrive(5.0f);
-            od.setTone(0.0f); // 200 Hz cutoff
+            od.setTone(0.0f);
 
-            // Feed a 10 kHz sine
             std::vector<float> buf(4096);
             for (int i = 0; i < 4096; ++i)
                 buf[i] = 0.5f * std::sin(2.0f * 3.14159f * 10000.0f * i / 44100.0f);
 
             od.processMono(buf.data(), 4096);
 
-            // Last samples should be heavily attenuated
             float rms = 0.0f;
             for (int i = 3072; i < 4096; ++i)
                 rms += buf[i] * buf[i];
             rms = std::sqrt(rms / 1024.0f);
 
-            expect(rms < 0.15f,
-                   "tone=0 should heavily attenuate 10 kHz");
+            expect(rms < 0.15f, "tone=0 should heavily attenuate 10 kHz");
         }
 
         beginTest("drive parameter clamping");
@@ -141,7 +130,6 @@ public:
 
         beginTest("no latency");
         {
-            // Overdrive is a sample-by-sample processor, no buffering
             Overdrive od;
             od.prepare(44100.0, 512);
             od.setDrive(1.0f);
@@ -150,7 +138,6 @@ public:
             float sample = 0.1f;
             od.processMono(&sample, 1);
 
-            // Should produce non-zero output immediately
             expect(sample != 0.0f, "should process immediately with no latency");
         }
     }

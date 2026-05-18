@@ -28,3 +28,4 @@ coverage.info
 coverage-html/
 docs/coverage/
 docs/badges/
+build-debug/

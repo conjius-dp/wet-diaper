@@ -24,15 +24,10 @@ private:
     float drive_ = 5.0f;
     float tone_ = 50.0f;
 
-    // One-pole low-pass for tone control
     float toneStateL_ = 0.0f;
     float toneCoeff_ = 0.0f;
 
     void updateToneCoeff();
-
-    // Map tone (0-100) to cutoff frequency (200 Hz - 20 kHz, logarithmic)
     static float toneToFreq(float tone);
-
-    // Soft-clip waveshaping: normalised tanh
     static float waveshape(float sample, float drive);
 };

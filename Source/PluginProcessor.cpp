@@ -94,7 +94,6 @@ void WetDiaperAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     for (auto& d : drives) { d.setDrive(drive); d.setTone(tone); }
 
-    // Process ch0 then copy to all other channels (dual-mono)
     drives[0].processMono(buffer.getWritePointer(0), numSamples);
     for (int ch = 1; ch < numCh; ++ch)
         buffer.copyFrom(ch, 0, buffer, 0, 0, numSamples);

@@ -44,13 +44,12 @@ public:
         return dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter("bypass"));
     }
 
-    // Editor size persistence
     std::atomic<int> editorWidth  { KnobDesign::defaultWidth };
     std::atomic<int> editorHeight { KnobDesign::defaultHeight };
 
 private:
     juce::AudioProcessorValueTreeState apvts;
-    Overdrive drives[2]; // per-channel
+    Overdrive drives[2];
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 

@@ -4,12 +4,10 @@
 
 namespace KnobDesign
 {
-    // Colors (matching conji.us)
     inline const juce::Colour bgColour         { 0xff111111 };
     inline const juce::Colour accentColour     { 0xffd48300 };
     inline const juce::Colour accentHoverColour{ 0xffffb84d };
 
-    // Knob geometry (proportional to diameter)
     inline constexpr float knobStrokeFrac    = 0.033f;
     inline constexpr float indicatorWidthFrac= 0.040f;
     inline constexpr float tickStrokeFrac    = 0.033f;
@@ -20,16 +18,13 @@ namespace KnobDesign
     inline constexpr float tickGap           = 1.15f;
     inline constexpr float tickLength        = 0.18f;
 
-    // Rotation range
     inline constexpr float rotationStartAngle = -135.0f;
     inline constexpr float rotationEndAngle   =  135.0f;
 
-    // Label style
     inline constexpr float labelFontScale    = 0.18f;
     inline constexpr float gainLabelScale    = 0.06f;
     inline constexpr float dbTextScale       = 0.06f;
 
-    // Window — no spectrum graph, shorter than tiptoe
     inline constexpr int   defaultWidth      = 650;
     inline constexpr int   defaultHeight     = 370;
 
@@ -38,7 +33,6 @@ namespace KnobDesign
     inline constexpr int   maxWidth          = 1000;
     inline constexpr int   maxHeight         = 570;
 
-    // Angle helpers
     inline float normToAngleRad(float norm01)
     {
         float degrees = rotationStartAngle + norm01 * (rotationEndAngle - rotationStartAngle);
@@ -53,14 +47,12 @@ namespace KnobDesign
     }
 }
 
-// Knob types for the distortion plugin
 enum class KnobType
 {
-    Drive,  // 1.0 – 100.0, tick labels: "1", "5", "100"
-    Tone    // 0 – 100 %, tick labels: "0", "50", "100"
+    Drive,
+    Tone
 };
 
-// Custom LookAndFeel
 class ConjusKnobLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -161,7 +153,6 @@ public:
             slider.getProperties().getWithDefault("hoverProgress", 0.0));
         auto interactiveColour = accentColour.interpolatedWith(accentHoverColour, hoverProgress);
 
-        // Draw knob circle
         g.setColour(interactiveColour);
         g.drawEllipse(cx - radius + strokeW * 0.5f,
                       cy - radius + strokeW * 0.5f,
@@ -169,7 +160,6 @@ public:
                       diameter - strokeW,
                       strokeW);
 
-        // Draw indicator line
         float angle = normToAngleRad(sliderPosProportional);
         float innerR = radius * indicatorStart;
         float outerR = radius * indicatorEnd;
@@ -184,27 +174,12 @@ public:
                                           juce::PathStrokeType::curved,
                                           juce::PathStrokeType::rounded));
 
-        // Draw tick marks at min, default, max
         float tickStartR = radius * tickGap;
         float tickEndR = radius * (tickGap + tickLength);
 
         auto knobType = getKnobType(slider);
 
-        float defaultNorm = 0.0f;
-        if (knobType == KnobType::Drive)
-        {
-            // Range 1.0 – 100.0 with skew 0.3, default 5.0.
-            // For skewed ranges, compute the normalised position of the
-            // default value using the same formula JUCE uses internally.
-            // NormalisableRange with skew 0.3: norm = pow((5-1)/(100-1), 1/0.3)
-            // But we approximate: at skew 0.3 the default 5.0 maps to ~0.31
-            defaultNorm = 0.31f;
-        }
-        else
-        {
-            // Tone: 0 – 100, default 50 -> 0.5
-            defaultNorm = 0.5f;
-        }
+        float defaultNorm = (knobType == KnobType::Drive) ? 0.31f : 0.5f;
 
         float tickAngles[3] = {
             juce::degreesToRadians(rotationStartAngle),
@@ -226,7 +201,6 @@ public:
                                               juce::PathStrokeType::rounded));
         }
 
-        // Draw tick labels
         float fontSize = diameter * labelFontScale;
         float markerFontSize = fontSize * 0.85f;
         g.setColour(accentColour);
@@ -249,7 +223,6 @@ public:
             rightLabel = "100";
         }
 
-        // Left label
         float a0 = juce::degreesToRadians(rotationStartAngle);
         float lx0 = cx + std::sin(a0) * labelR;
         float ly0 = cy - std::cos(a0) * labelR + labelYOffset;
@@ -258,7 +231,6 @@ public:
                                           fontSize * 5.0f, markerFontSize * 1.2f),
                    juce::Justification::centred, false);
 
-        // Right label
         float a1 = juce::degreesToRadians(rotationEndAngle);
         float lx1 = cx + std::sin(a1) * labelR;
         float ly1 = cy - std::cos(a1) * labelR + labelYOffset;
@@ -267,7 +239,6 @@ public:
                                           fontSize * 5.0f, markerFontSize * 1.2f),
                    juce::Justification::centred, false);
 
-        // Middle label
         float aMid = normToAngleRad(defaultNorm);
         float topLabelR = tickEndR + markerFontSize * 0.3f;
         float lxM = cx + std::sin(aMid) * topLabelR;
@@ -295,7 +266,6 @@ public:
             float pillFontSize = windowH * 0.055f;
             auto pillFont = getBoldFont(pillFontSize);
 
-            // Parse the value text
             juce::String valueStr = text.replace(" %", "").trim();
 
             float valueW = KnobDesign::stringWidth(pillFont, valueStr);
@@ -327,7 +297,6 @@ public:
             g.setFont(pillFont);
             float centreY = pillBounds.getCentreY();
 
-            // Draw value + suffix centred
             juce::String displayText = valueStr + suffix;
             g.drawText(displayText,
                        juce::Rectangle<float>(pillBounds.getX(), centreY - pillFontSize * 0.5f,

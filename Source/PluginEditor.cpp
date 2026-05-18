@@ -9,21 +9,18 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
                         BinaryData::InconsolataRegular_ttfSize);
     setLookAndFeel(&conjusLAF);
 
-    // Drive knob
     driveSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
     driveSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 120, 30);
     ConjusKnobLookAndFeel::setKnobType(driveSlider, KnobType::Drive);
     driveSlider.setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
     addAndMakeVisible(driveSlider);
 
-    // Tone knob
     toneSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
     toneSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 120, 30);
     ConjusKnobLookAndFeel::setKnobType(toneSlider, KnobType::Tone);
     toneSlider.setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
     addAndMakeVisible(toneSlider);
 
-    // Labels
     driveLabel.setJustificationType(juce::Justification::centredBottom);
     addAndMakeVisible(driveLabel);
     toneLabel.setJustificationType(juce::Justification::centredBottom);
@@ -32,13 +29,11 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
     driveLabel.toBack();
     toneLabel.toBack();
 
-    // Attachments
     driveAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processorRef.getAPVTS(), "drive", driveSlider);
     toneAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processorRef.getAPVTS(), "tone", toneSlider);
 
-    // Text formatting — set AFTER attachment
     driveSlider.textFromValueFunction = [](double value) -> juce::String {
         return juce::String(value, 1);
     };
@@ -55,7 +50,6 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
     };
     toneSlider.updateText();
 
-    // Snap to default on double-click
     driveSlider.onDoubleClick = [this]() {
         startSnapAnimation(driveSlider, driveAnim);
     };
@@ -63,17 +57,14 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
         startSnapAnimation(toneSlider, toneAnim);
     };
 
-    // Bypass button
     addAndMakeVisible(bypassButton);
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processorRef.getAPVTS(), "bypass", bypassButton);
 
-    // Logo
     logoImage = juce::ImageCache::getFromMemory(
         BinaryData::conjiusavatartransparentbg_png,
         BinaryData::conjiusavatartransparentbg_pngSize);
 
-    // Window
     int savedW = processorRef.editorWidth.load();
     int savedH = processorRef.editorHeight.load();
     setResizable(true, false);
@@ -120,7 +111,6 @@ void WetDiaperAudioProcessorEditor::mouseExit(const juce::MouseEvent& e)
 
 void WetDiaperAudioProcessorEditor::timerCallback()
 {
-    // Animate conjius logo hover
     float target = logoHoverTarget ? 1.0f : 0.0f;
     if (std::abs(target - logoHoverProgress) > 0.002f)
     {
@@ -128,7 +118,6 @@ void WetDiaperAudioProcessorEditor::timerCallback()
         repaint(logoBounds.expanded(static_cast<int>(logoBounds.getWidth() * 0.2f)));
     }
 
-    // Animate hover colour for knobs
     auto animateHover = [](juce::Component& c, bool hovered) {
         float current = static_cast<float>(c.getProperties().getWithDefault("hoverProgress", 0.0));
         float dest = hovered ? 1.0f : 0.0f;
@@ -142,7 +131,6 @@ void WetDiaperAudioProcessorEditor::timerCallback()
     animateHover(driveSlider, driveSlider.isMouseOverOrDragging(true));
     animateHover(toneSlider, toneSlider.isMouseOverOrDragging(true));
 
-    // Snap animations
     updateSnapAnimation(driveSlider, driveAnim);
     updateSnapAnimation(toneSlider, toneAnim);
 }
@@ -151,7 +139,6 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(KnobDesign::bgColour);
 
-    // Conjius logo bottom-left
     if (logoImage.isValid() && showChrome)
     {
         float scale = static_cast<float>(getWidth()) / static_cast<float>(KnobDesign::defaultWidth);
@@ -177,7 +164,6 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
     float w = static_cast<float>(getWidth());
     float h = static_cast<float>(getHeight());
 
-    // Title: "WET DIAPER" with subtitle "DISTORTION"
     {
         float titleFontSize = h * 0.065f;
         auto titleFont = conjusLAF.getBoldFont(titleFontSize);
@@ -231,7 +217,6 @@ void WetDiaperAudioProcessorEditor::resized()
     float w = static_cast<float>(getWidth());
     float h = static_cast<float>(getHeight());
 
-    // Bypass button — top-right corner
     {
         const float scaleF  = w / static_cast<float>(KnobDesign::defaultWidth);
         const float edgeGap = 10.0f * scaleF;
@@ -250,7 +235,6 @@ void WetDiaperAudioProcessorEditor::resized()
     float knobColX0 = margin;
     float knobColX1 = w - margin - knobColW;
 
-    // Labels
     const float labelFontSize = KnobDesign::columnLabelFontSize(w);
     auto labelFont = conjusLAF.getBoldFont(labelFontSize);
     driveLabel.setFont(labelFont);
@@ -263,7 +247,6 @@ void WetDiaperAudioProcessorEditor::resized()
     toneLabel.setBounds(static_cast<int>(knobColX1), labelY,
                         static_cast<int>(knobColW), labelH);
 
-    // Knob sliders
     float dbFontSize = w * KnobDesign::dbTextScale;
     int sliderBottom = static_cast<int>(h * 0.96f);
     int sliderTop = static_cast<int>(h * 0.04f);
@@ -289,7 +272,6 @@ void WetDiaperAudioProcessorEditor::resized()
     toneSlider.setBounds(static_cast<int>(sliderOffset1), sliderTopEditor,
                          static_cast<int>(sliderBoundsW), sliderH);
 
-    // Update text box fonts
     for (auto* slider : { &driveSlider, &toneSlider })
     {
         slider->setPaintingIsUnclipped(true);
@@ -308,7 +290,6 @@ void WetDiaperAudioProcessorEditor::resized()
         }
     }
 
-    // Bypass button knob-stroke sync
     float knobAreaH = static_cast<float>(sliderH) - static_cast<float>(textBoxH);
     float knobDiameter = juce::jmin(sliderBoundsW, knobAreaH) * 0.78f;
     float knobStrokeW = knobDiameter * KnobDesign::knobStrokeFrac;
