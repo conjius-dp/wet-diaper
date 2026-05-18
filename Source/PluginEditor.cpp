@@ -65,6 +65,10 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
         BinaryData::conjiusavatartransparentbg_png,
         BinaryData::conjiusavatartransparentbg_pngSize);
 
+    titleLogoImage = juce::ImageCache::getFromMemory(
+        BinaryData::wetdiaperlogotransparentbg_png,
+        BinaryData::wetdiaperlogotransparentbg_pngSize);
+
     int savedW = processorRef.editorWidth.load();
     int savedH = processorRef.editorHeight.load();
     setResizable(true, false);
@@ -164,22 +168,24 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
     float w = static_cast<float>(getWidth());
     float h = static_cast<float>(getHeight());
 
+    if (titleLogoImage.isValid())
     {
-        float titleFontSize = h * 0.065f;
-        auto titleFont = conjusLAF.getBoldFont(titleFontSize);
-        g.setFont(titleFont);
-        g.setColour(KnobDesign::accentColour);
-        float titleY = h * 0.12f;
-        g.drawText("WET DIAPER",
-                   juce::Rectangle<float>(0.0f, titleY, w, titleFontSize * 1.2f),
-                   juce::Justification::centred, false);
+        float titleH = h * 0.22f;
+        float aspect = static_cast<float>(titleLogoImage.getWidth())
+                     / static_cast<float>(titleLogoImage.getHeight());
+        float titleW = titleH * aspect;
+        float titleX = (w - titleW) * 0.5f;
+        float titleY = h * 0.06f;
+        g.drawImage(titleLogoImage,
+                    juce::Rectangle<float>(titleX, titleY, titleW, titleH),
+                    juce::RectanglePlacement::centred);
 
-        float subFontSize = titleFontSize * 0.45f;
+        float subFontSize = h * 0.028f;
         auto subFont = conjusLAF.getBoldFont(subFontSize);
         g.setFont(subFont);
         g.setColour(KnobDesign::accentHoverColour);
         g.drawText("DISTORTION",
-                   juce::Rectangle<float>(0.0f, titleY + titleFontSize * 1.1f, w, subFontSize * 1.4f),
+                   juce::Rectangle<float>(0.0f, titleY + titleH + h * 0.01f, w, subFontSize * 1.4f),
                    juce::Justification::centred, false);
     }
 }

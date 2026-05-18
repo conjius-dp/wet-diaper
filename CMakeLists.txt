@@ -45,6 +45,7 @@ target_sources(WetDiaper
 juce_add_binary_data(WetDiaperBinaryData
     SOURCES
         Assets/conjius-avatar-transparent-bg.png
+        Assets/wet-diaper-logo-transparent-bg.png
         Assets/Inconsolata-Bold.ttf
         Assets/Inconsolata-Regular.ttf)
 
