@@ -37,6 +37,24 @@ public:
                 expectEquals(s, 0.0f);
         }
 
+        beginTest("drive zero is identity");
+        {
+            Overdrive od;
+            od.prepare(44100.0, 512);
+            od.setDrive(0.0f);
+            od.setTone(100.0f);
+
+            std::vector<float> warmup(4096, 0.5f);
+            od.processMono(warmup.data(), 4096);
+
+            std::vector<float> buf(512, 0.5f);
+            od.processMono(buf.data(), 512);
+
+            float last = buf.back();
+            expect(std::abs(last - 0.5f) < 0.01f,
+                   "drive=0 should pass signal through unchanged");
+        }
+
         beginTest("low drive produces moderate output");
         {
             Overdrive od;
@@ -44,15 +62,15 @@ public:
             od.setDrive(1.0f);
             od.setTone(100.0f);
 
-            std::vector<float> warmup(4096, 0.01f);
+            std::vector<float> warmup(4096, 0.5f);
             od.processMono(warmup.data(), 4096);
 
-            std::vector<float> buf(512, 0.01f);
+            std::vector<float> buf(512, 0.5f);
             od.processMono(buf.data(), 512);
 
             float last = buf.back();
-            expect(last > 0.1f && last < 0.5f,
-                   "low drive with quiet input should produce moderate output");
+            expect(last > 0.4f && last < 0.8f,
+                   "low drive with input should produce moderate output");
         }
 
         beginTest("high drive clips signal");
@@ -62,10 +80,10 @@ public:
             od.setDrive(100.0f);
             od.setTone(100.0f);
 
-            std::vector<float> warmup(4096, 0.01f);
+            std::vector<float> warmup(4096, 0.5f);
             od.processMono(warmup.data(), 4096);
 
-            std::vector<float> buf(512, 0.01f);
+            std::vector<float> buf(512, 0.5f);
             od.processMono(buf.data(), 512);
 
             float last = buf.back();
@@ -114,7 +132,7 @@ public:
         {
             Overdrive od;
             od.setDrive(-5.0f);
-            expectEquals(od.getDrive(), 1.0f);
+            expectEquals(od.getDrive(), 0.0f);
             od.setDrive(200.0f);
             expectEquals(od.getDrive(), 100.0f);
         }

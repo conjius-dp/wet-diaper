@@ -137,6 +137,13 @@ void WetDiaperAudioProcessorEditor::timerCallback()
 
     updateSnapAnimation(driveSlider, driveAnim);
     updateSnapAnimation(toneSlider, toneAnim);
+
+    float currentDrive = processorRef.getAPVTS().getRawParameterValue("drive")->load();
+    if (std::abs(currentDrive - lastGraphDrive) > 0.001f)
+    {
+        lastGraphDrive = currentDrive;
+        repaint(graphBounds);
+    }
 }
 
 void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
@@ -167,25 +174,95 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
 
     float w = static_cast<float>(getWidth());
     float h = static_cast<float>(getHeight());
+    float scaleF = w / static_cast<float>(KnobDesign::defaultWidth);
+
+    {
+        float gOuterLeft = 89.64f * scaleF;
+        float gOuterTop = 64.0f * scaleF;
+        float gOuterW = 466.0f * scaleF;
+        float gOuterH = 156.0f * scaleF;
+
+        float gPad = 14.0f * scaleF;
+        float gLeft = gOuterLeft + gPad;
+        float gTop = gOuterTop + gPad;
+        float gW = gOuterW - 2.0f * gPad;
+        float gH = gOuterH - 2.0f * gPad;
+        float gRight = gLeft + gW;
+        float gBottom = gTop + gH;
+        float gCx = gLeft + gW * 0.5f;
+        float gCy = gTop + gH * 0.5f;
+
+        graphBounds = juce::Rectangle<float>(gOuterLeft, gOuterTop, gOuterW, gOuterH).toNearestInt().expanded(2);
+
+        float knobDiam = w * 0.216f;
+        float graphStroke = knobDiam * KnobDesign::knobStrokeFrac;
+
+        float axisStroke = 1.0f * scaleF;
+        float tickStroke = 1.0f * scaleF;
+
+        g.setColour(KnobDesign::accentColour.darker(0.7f));
+        g.drawLine(gLeft, gCy, gRight, gCy, axisStroke);
+        g.drawLine(gCx, gTop, gCx, gBottom, axisStroke);
+
+        float tickLen = 5.0f * scaleF;
+        for (int i = -4; i <= 4; ++i)
+        {
+            float val = static_cast<float>(i) * 0.25f;
+            float px = gCx + val * gW * 0.5f;
+            float py = gCy - val * gH * 0.5f;
+            g.drawLine(px, gCy - tickLen, px, gCy + tickLen, tickStroke);
+            g.drawLine(gCx - tickLen, py, gCx + tickLen, py, tickStroke);
+        }
+
+        float drive = processorRef.getAPVTS().getRawParameterValue("drive")->load();
+
+        juce::Path curve;
+        const int N = 300;
+        for (int i = 0; i <= N; ++i)
+        {
+            float t = static_cast<float>(i) / static_cast<float>(N);
+            float xVal = -1.0f + 2.0f * t;
+            float yVal = (drive < 1e-6f) ? xVal
+                         : std::tanh(xVal * drive) / std::tanh(drive);
+            float px = gLeft + t * gW;
+            float py = gCy - yVal * gH * 0.5f;
+            if (i == 0) curve.startNewSubPath(px, py);
+            else curve.lineTo(px, py);
+        }
+
+        g.setColour(KnobDesign::accentColour);
+        g.strokePath(curve, juce::PathStrokeType(graphStroke,
+            juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        float labelSize = 13.0f * scaleF;
+        g.setFont(conjusLAF.getRegularFont(labelSize));
+        g.setColour(KnobDesign::accentColour.darker(0.5f));
+        g.drawText("-1",   94.0f * scaleF, 149.0f * scaleF, 18.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
+        g.drawText("1",   533.0f * scaleF, 150.0f * scaleF, 18.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
+        g.drawText("1",   326.0f * scaleF,  71.0f * scaleF, 18.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
+        g.drawText("-1",  328.0f * scaleF, 199.0f * scaleF, 18.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
+        g.drawText("0.5",  423.0f * scaleF, 150.0f * scaleF, 20.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
+        g.drawText("-0.5", 194.0f * scaleF, 150.0f * scaleF, 32.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
+        g.drawText("0.5",  331.0f * scaleF, 103.0f * scaleF, 20.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
+        g.drawText("-0.5", 327.0f * scaleF, 167.0f * scaleF, 32.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
+    }
 
     if (titleLogoImage.isValid())
     {
-        float titleH = h * 0.22f;
-        float aspect = static_cast<float>(titleLogoImage.getWidth())
-                     / static_cast<float>(titleLogoImage.getHeight());
-        float titleW = titleH * aspect;
-        float titleX = (w - titleW) * 0.5f;
-        float titleY = h * 0.111f;
+        float titleX = 271.5f * scaleF;
+        float titleY = 276.42f * scaleF;
+        float titleW = 107.0f * scaleF;
+        float titleH = 81.4f * scaleF;
         g.drawImage(titleLogoImage,
                     juce::Rectangle<float>(titleX, titleY, titleW, titleH),
                     juce::RectanglePlacement::centred);
 
-        float subFontSize = h * 0.028f;
+        float subFontSize = 10.4f * scaleF;
         auto subFont = conjusLAF.getBoldFont(subFontSize);
         g.setFont(subFont);
         g.setColour(KnobDesign::accentHoverColour);
         g.drawText("DISTORTION",
-                   juce::Rectangle<float>(0.0f, titleY + titleH, w, subFontSize * 1.4f),
+                   juce::Rectangle<float>(274.0f * scaleF, 360.67f * scaleF, 102.0f * scaleF, 16.0f * scaleF),
                    juce::Justification::centred, false);
     }
 }
@@ -194,13 +271,11 @@ void WetDiaperAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
 {
     const float scaleF  = static_cast<float>(getWidth())
                         / static_cast<float>(KnobDesign::defaultWidth);
-    const float padX    = 30.0f * scaleF;
-    const float padTop  = 30.0f * scaleF;
     const float borderW = 4.0f  * scaleF;
     const float radius  = 70.0f * scaleF;
-    juce::Rectangle<float> borderRect{ padX, padTop,
-                                       static_cast<float>(getWidth())  - 2.0f * padX,
-                                       310.0f * scaleF };
+    juce::Rectangle<float> borderRect{ 24.75f * scaleF, 27.0f * scaleF,
+                                       590.0f * scaleF,
+                                       510.0f * scaleF };
     juce::Path border;
     border.addRoundedRectangle(borderRect, radius);
     g.setColour(KnobDesign::accentColour);
@@ -248,8 +323,8 @@ void WetDiaperAudioProcessorEditor::resized()
     toneLabel.setFont(labelFont);
 
     const int labelH = static_cast<int>(KnobDesign::columnLabelHeight(w));
-    const int driveLabelY = static_cast<int>(h * 0.119f);
-    const int toneLabelY  = static_cast<int>(h * 0.142f);
+    const int driveLabelY = static_cast<int>(h * 0.4278f);
+    const int toneLabelY  = static_cast<int>(h * 0.4348f);
     driveLabel.setBounds(static_cast<int>(knobColX0), driveLabelY,
                          static_cast<int>(knobColW), labelH);
     toneLabel.setBounds(static_cast<int>(knobColX1), toneLabelY,

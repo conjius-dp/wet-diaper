@@ -16,7 +16,7 @@ void Overdrive::reset()
 
 void Overdrive::setDrive(float driveAmount)
 {
-    drive_ = std::clamp(driveAmount, 1.0f, 100.0f);
+    drive_ = std::clamp(driveAmount, 0.0f, 100.0f);
 }
 
 void Overdrive::setTone(float toneNorm)
@@ -57,7 +57,7 @@ void Overdrive::updateToneCoeff()
 
 float Overdrive::waveshape(float sample, float drive)
 {
-    constexpr float preGain = 30.0f;
-    float x = sample * preGain * drive;
-    return std::tanh(x);
+    if (drive < 1e-6f)
+        return sample;
+    return std::tanh(sample * drive) / std::tanh(drive);
 }

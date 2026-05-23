@@ -26,7 +26,7 @@ public:
         if (auto* editor = getParentComponent())
             parentH = static_cast<float>(editor->getHeight());
         auto kt = ConjusKnobLookAndFeel::getKnobType(*this);
-        const float knobShiftBase = (kt == KnobType::Drive) ? 8.25f : 17.55f;
+        const float knobShiftBase = (kt == KnobType::Drive) ? 103.0f : 113.0f;
         const float knobShift = knobShiftBase * (parentH / static_cast<float>(KnobDesign::defaultHeight));
 
         float d = juce::jmin(juce::jmin(sw, sh) * 0.78f, sw * 0.60f);
@@ -89,6 +89,8 @@ private:
     std::unique_ptr<juce::ResizableCornerComponent> resizer;
 
     juce::Rectangle<int> logoBounds;
+    juce::Rectangle<int> graphBounds;
+    float lastGraphDrive = -1.0f;
     bool  logoHoverTarget   = false;
     float logoHoverProgress = 0.0f;
 

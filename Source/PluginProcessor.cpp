@@ -17,7 +17,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout WetDiaperAudioProcessor::cre
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("drive", 1), "Drive",
-        juce::NormalisableRange<float>(1.0f, 100.0f, 0.1f, 0.3f), 5.0f));
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f, 0.3f), 5.0f));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("tone", 1), "Tone",

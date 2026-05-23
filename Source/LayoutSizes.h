@@ -2,7 +2,7 @@
 
 namespace KnobDesign
 {
-    inline constexpr float knobClusterShiftDefault = 31.0f;
+    inline constexpr float knobClusterShiftDefault = 34.0f;
 
     inline constexpr int   defaultWindowWidth  = 650;
     inline constexpr int   defaultWindowHeight = 370;

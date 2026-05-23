@@ -26,12 +26,12 @@ namespace KnobDesign
     inline constexpr float dbTextScale       = 0.06f;
 
     inline constexpr int   defaultWidth      = 650;
-    inline constexpr int   defaultHeight     = 370;
+    inline constexpr int   defaultHeight     = 570;
 
     inline constexpr int   minWidth          = 400;
-    inline constexpr int   minHeight         = 230;
+    inline constexpr int   minHeight         = 351;
     inline constexpr int   maxWidth          = 1000;
-    inline constexpr int   maxHeight         = 570;
+    inline constexpr int   maxHeight         = 877;
 
     inline float normToAngleRad(float norm01)
     {
@@ -138,7 +138,7 @@ public:
         float parentH = 0.0f;
         if (auto* editor = slider.getParentComponent())
             parentH = static_cast<float>(editor->getHeight());
-        const float knobShiftBase = (knobType == KnobType::Drive) ? 8.25f : 17.55f;
+        const float knobShiftBase = (knobType == KnobType::Drive) ? 103.0f : 113.0f;
         const float knobShiftDown = knobShiftBase * (parentH > 0.0f
                                              ? parentH / static_cast<float>(KnobDesign::defaultHeight)
                                              : 1.0f);
@@ -183,7 +183,7 @@ public:
         float tickStartR = radius * tickGap;
         float tickEndR = radius * (tickGap + tickLength);
 
-        float defaultNorm = (knobType == KnobType::Drive) ? 0.382f : 0.5f;
+        float defaultNorm = (knobType == KnobType::Drive) ? 0.407f : 0.5f;
 
         float tickAngles[3] = {
             juce::degreesToRadians(rotationStartAngle),
@@ -216,7 +216,7 @@ public:
         juce::String leftLabel, midLabel, rightLabel;
         if (knobType == KnobType::Drive)
         {
-            leftLabel  = "1";
+            leftLabel  = "0";
             midLabel   = "5";
             rightLabel = "100";
         }
@@ -266,8 +266,8 @@ public:
             juce::String suffix = (knobType == KnobType::Tone) ? " %" : "";
 
             auto* editor = slider ? slider->getParentComponent() : nullptr;
-            float windowH = editor ? static_cast<float>(editor->getHeight()) : 370.0f;
-            float pillFontSize = windowH * 0.055f;
+            float windowH = editor ? static_cast<float>(editor->getHeight()) : 570.0f;
+            float pillFontSize = windowH * 0.036f;
             auto pillFont = getBoldFont(pillFontSize);
 
             juce::String valueStr = text.replace(" %", "").trim();
