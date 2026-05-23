@@ -165,7 +165,7 @@ jobs:
             echo "Coverage unchanged, skipping commit"
           else
             git commit -m "Update coverage badge to ${LINE_PCT}%"
-            git push origin gh-pages
+            git push --force origin gh-pages
           fi
 
   build-and-test-windows:
