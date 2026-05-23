@@ -25,16 +25,19 @@ public:
         float parentH = sh;
         if (auto* editor = getParentComponent())
             parentH = static_cast<float>(editor->getHeight());
-        const float knobShift = 90.0f * (parentH / static_cast<float>(KnobDesign::defaultHeight));
+        auto kt = ConjusKnobLookAndFeel::getKnobType(*this);
+        const float knobShiftBase = (kt == KnobType::Drive) ? 8.25f : 17.55f;
+        const float knobShift = knobShiftBase * (parentH / static_cast<float>(KnobDesign::defaultHeight));
 
         float d = juce::jmin(juce::jmin(sw, sh) * 0.78f, sw * 0.60f);
         float r = d * 0.5f;
         float cx = sw * 0.5f;
         float cy = parentH * 0.5f - static_cast<float>(getY()) + knobShift;
 
+        float tickEndR = r * (KnobDesign::tickGap + KnobDesign::tickLength);
         float dx = static_cast<float>(x) - cx;
         float dy = static_cast<float>(y) - cy;
-        if (dx * dx + dy * dy <= r * r) return true;
+        if (dx * dx + dy * dy <= tickEndR * tickEndR) return true;
 
         float textBoxH = sh * 0.25f;
         int pillHalfW = static_cast<int>(sw * 0.30f);

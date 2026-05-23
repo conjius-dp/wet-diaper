@@ -175,7 +175,7 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
                      / static_cast<float>(titleLogoImage.getHeight());
         float titleW = titleH * aspect;
         float titleX = (w - titleW) * 0.5f;
-        float titleY = h * 0.06f;
+        float titleY = h * 0.111f;
         g.drawImage(titleLogoImage,
                     juce::Rectangle<float>(titleX, titleY, titleW, titleH),
                     juce::RectanglePlacement::centred);
@@ -185,7 +185,7 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
         g.setFont(subFont);
         g.setColour(KnobDesign::accentHoverColour);
         g.drawText("DISTORTION",
-                   juce::Rectangle<float>(0.0f, titleY + titleH + h * 0.01f, w, subFontSize * 1.4f),
+                   juce::Rectangle<float>(0.0f, titleY + titleH, w, subFontSize * 1.4f),
                    juce::Justification::centred, false);
     }
 }
@@ -194,12 +194,13 @@ void WetDiaperAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
 {
     const float scaleF  = static_cast<float>(getWidth())
                         / static_cast<float>(KnobDesign::defaultWidth);
-    const float pad     = 30.0f * scaleF;
+    const float padX    = 30.0f * scaleF;
+    const float padTop  = 30.0f * scaleF;
     const float borderW = 4.0f  * scaleF;
     const float radius  = 70.0f * scaleF;
-    juce::Rectangle<float> borderRect{ pad, pad,
-                                       static_cast<float>(getWidth())  - 2.0f * pad,
-                                       static_cast<float>(getHeight()) - 2.0f * pad };
+    juce::Rectangle<float> borderRect{ padX, padTop,
+                                       static_cast<float>(getWidth())  - 2.0f * padX,
+                                       310.0f * scaleF };
     juce::Path border;
     border.addRoundedRectangle(borderRect, radius);
     g.setColour(KnobDesign::accentColour);
@@ -236,7 +237,7 @@ void WetDiaperAudioProcessorEditor::resized()
         bypassButton.toFront(false);
     }
 
-    float margin = w * 0.05f;
+    float margin = w * 0.057f;
     float knobColW = w * 0.40f;
     float knobColX0 = margin;
     float knobColX1 = w - margin - knobColW;
@@ -247,10 +248,11 @@ void WetDiaperAudioProcessorEditor::resized()
     toneLabel.setFont(labelFont);
 
     const int labelH = static_cast<int>(KnobDesign::columnLabelHeight(w));
-    const int labelY = static_cast<int>(h * 0.25f);
-    driveLabel.setBounds(static_cast<int>(knobColX0), labelY,
+    const int driveLabelY = static_cast<int>(h * 0.119f);
+    const int toneLabelY  = static_cast<int>(h * 0.142f);
+    driveLabel.setBounds(static_cast<int>(knobColX0), driveLabelY,
                          static_cast<int>(knobColW), labelH);
-    toneLabel.setBounds(static_cast<int>(knobColX1), labelY,
+    toneLabel.setBounds(static_cast<int>(knobColX1), toneLabelY,
                         static_cast<int>(knobColW), labelH);
 
     float dbFontSize = w * KnobDesign::dbTextScale;
@@ -258,7 +260,7 @@ void WetDiaperAudioProcessorEditor::resized()
     int sliderTop = static_cast<int>(h * 0.04f);
     int sliderH = sliderBottom - sliderTop;
 
-    const float knobClusterExtraShift = 20.0f * (h / static_cast<float>(KnobDesign::defaultHeight));
+    const float knobClusterExtraShift = KnobDesign::knobClusterShiftDefault * (h / static_cast<float>(KnobDesign::defaultHeight));
     const int sliderTopEditor = sliderTop + static_cast<int>(knobClusterExtraShift);
 
     float sliderBoundsW = knobColW * 0.90f;
@@ -309,8 +311,7 @@ void WetDiaperAudioProcessorEditor::startSnapAnimation(juce::Slider& slider, Sli
     if (param == nullptr) return;
 
     anim.currentValue = slider.getValue();
-    anim.targetValue = static_cast<double>(param->getDefaultValue())
-                       * (slider.getMaximum() - slider.getMinimum()) + slider.getMinimum();
+    anim.targetValue = static_cast<double>(param->convertFrom0to1(param->getDefaultValue()));
     anim.active = true;
 }
 

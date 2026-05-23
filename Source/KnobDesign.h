@@ -133,10 +133,13 @@ public:
                                     sliderW * 0.60f);
         float radius = diameter * 0.5f;
 
+        auto knobType = getKnobType(slider);
+
         float parentH = 0.0f;
         if (auto* editor = slider.getParentComponent())
             parentH = static_cast<float>(editor->getHeight());
-        const float knobShiftDown = 90.0f * (parentH > 0.0f
+        const float knobShiftBase = (knobType == KnobType::Drive) ? 8.25f : 17.55f;
+        const float knobShiftDown = knobShiftBase * (parentH > 0.0f
                                              ? parentH / static_cast<float>(KnobDesign::defaultHeight)
                                              : 1.0f);
         float cx = bounds.getCentreX();
@@ -152,6 +155,9 @@ public:
         float hoverProgress = static_cast<float>(
             slider.getProperties().getWithDefault("hoverProgress", 0.0));
         auto interactiveColour = accentColour.interpolatedWith(accentHoverColour, hoverProgress);
+
+        g.setColour(bgColour);
+        g.fillEllipse(cx - radius, cy - radius, diameter, diameter);
 
         g.setColour(interactiveColour);
         g.drawEllipse(cx - radius + strokeW * 0.5f,
@@ -177,9 +183,7 @@ public:
         float tickStartR = radius * tickGap;
         float tickEndR = radius * (tickGap + tickLength);
 
-        auto knobType = getKnobType(slider);
-
-        float defaultNorm = (knobType == KnobType::Drive) ? 0.31f : 0.5f;
+        float defaultNorm = (knobType == KnobType::Drive) ? 0.382f : 0.5f;
 
         float tickAngles[3] = {
             juce::degreesToRadians(rotationStartAngle),
