@@ -253,16 +253,22 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
         float titleY = 276.42f * scaleF;
         float titleW = 107.0f * scaleF;
         float titleH = 81.4f * scaleF;
+        float logoCx = titleX + titleW * 0.5f;
+        float logoCy = titleY + titleH * 0.5f;
+        g.saveState();
+        g.addTransform(juce::AffineTransform::rotation(
+            juce::degreesToRadians(-6.087f), logoCx, logoCy));
         g.drawImage(titleLogoImage,
                     juce::Rectangle<float>(titleX, titleY, titleW, titleH),
                     juce::RectanglePlacement::centred);
+        g.restoreState();
 
-        float subFontSize = 10.4f * scaleF;
+        float subFontSize = 13.5f * scaleF;
         auto subFont = conjusLAF.getBoldFont(subFontSize);
         g.setFont(subFont);
         g.setColour(KnobDesign::accentHoverColour);
         g.drawText("DISTORTION",
-                   juce::Rectangle<float>(274.0f * scaleF, 360.67f * scaleF, 102.0f * scaleF, 16.0f * scaleF),
+                   juce::Rectangle<float>(286.0f * scaleF, 360.292f * scaleF, 102.0f * scaleF, 16.0f * scaleF),
                    juce::Justification::centred, false);
     }
 }
@@ -324,7 +330,7 @@ void WetDiaperAudioProcessorEditor::resized()
 
     const int labelH = static_cast<int>(KnobDesign::columnLabelHeight(w));
     const int driveLabelY = static_cast<int>(h * 0.4278f);
-    const int toneLabelY  = static_cast<int>(h * 0.4348f);
+    const int toneLabelY  = static_cast<int>(h * 0.4278f);
     driveLabel.setBounds(static_cast<int>(knobColX0), driveLabelY,
                          static_cast<int>(knobColW), labelH);
     toneLabel.setBounds(static_cast<int>(knobColX1), toneLabelY,
