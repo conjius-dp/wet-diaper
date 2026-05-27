@@ -25,7 +25,6 @@ public:
         float parentH = sh;
         if (auto* editor = getParentComponent())
             parentH = static_cast<float>(editor->getHeight());
-        auto kt = ConjusKnobLookAndFeel::getKnobType(*this);
         const float knobShiftBase = 103.0f;
         const float knobShift = knobShiftBase * (parentH / static_cast<float>(KnobDesign::defaultHeight));
 
@@ -62,6 +61,10 @@ public:
     void resized() override;
     void mouseMove(const juce::MouseEvent& e) override;
     void mouseExit(const juce::MouseEvent& e) override;
+    void mouseDown(const juce::MouseEvent& e) override;
+    void mouseDrag(const juce::MouseEvent& e) override;
+    void mouseUp(const juce::MouseEvent& e) override;
+    void mouseDoubleClick(const juce::MouseEvent& e) override;
 
     void setChromeVisible(bool visible);
 
@@ -85,6 +88,9 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> driveAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> toneAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> volumeAttachment;
+
+    juce::TextButton symButton;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> symAttachment;
 
     juce::Image logoImage;
     juce::Image titleLogoImage;
@@ -128,6 +134,34 @@ private:
 
     void startSnapAnimation(juce::Slider& slider, SliderAnimation& anim);
     void updateSnapAnimation(juce::Slider& slider, SliderAnimation& anim);
+
+    int lastCurveVersion = -1;
+    bool lastSymmetric = true;
+
+    struct GraphCoords
+    {
+        float gLeft, gTop, gW, gH, gCx, gCy, gRight, gBottom;
+        float scaleF;
+        bool valid = false;
+    };
+    GraphCoords gc_;
+
+    enum class BezierHitType { None, Point, InHandle, OutHandle, StartOutHandle, EndInHandle };
+    struct BezierHit
+    {
+        BezierHitType type = BezierHitType::None;
+        int pointIndex = -1;
+        bool leftCurve = false;
+    };
+
+    BezierHit dragTarget_;
+    bool dragging_ = false;
+
+    BezierHit findBezierHit(float mx, float my) const;
+    juce::Point<float> bezierToPixel(float bx, float by) const;
+    juce::Point<float> pixelToBezier(float px, float py) const;
+    bool isInGraphArea(float px, float py) const;
+    float distToNearestCurvePoint(float bx, float by) const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WetDiaperAudioProcessorEditor)
 };

@@ -7,6 +7,7 @@ add_subdirectory(JUCE)
 # --- DSP Library (shared between plugin and tests) ---
 add_library(WetDiaperDSP STATIC
     Source/DSP/Overdrive.cpp
+    Source/DSP/BezierCurve.cpp
 )
 
 target_include_directories(WetDiaperDSP PUBLIC Source)
@@ -108,6 +109,7 @@ endif()
 # --- Tests ---
 add_executable(WetDiaperTests
     Tests/TestOverdrive.cpp
+    Tests/TestBezierCurve.cpp
 )
 
 target_include_directories(WetDiaperTests PRIVATE Source)

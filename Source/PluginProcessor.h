@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "DSP/Overdrive.h"
+#include "DSP/BezierCurve.h"
 #include "KnobDesign.h"
 
 class WetDiaperAudioProcessor : public juce::AudioProcessor
@@ -55,9 +56,22 @@ public:
     std::atomic<int> editorHeight { KnobDesign::defaultHeight };
     std::atomic<float> inputLevelRms { 0.0f };
 
+    BezierCurve& getBezierCurve() { return bezierCurve_; }
+    const BezierCurve& getBezierCurve() const { return bezierCurve_; }
+    BezierCurve& getLeftBezierCurve() { return leftBezierCurve_; }
+    const BezierCurve& getLeftBezierCurve() const { return leftBezierCurve_; }
+    void rebuildLUT();
+    bool isSymmetric() const { return apvts.getRawParameterValue("asymmetric")->load() < 0.5f; }
+    std::atomic<int> curveVersion_ { 0 };
+
 private:
     juce::AudioProcessorValueTreeState apvts;
     Overdrive drives[2];
+    BezierCurve bezierCurve_;
+    BezierCurve leftBezierCurve_;
+    float lutBuffers_[2][BezierCurve::kLutSize]{};
+    float leftLutBuffers_[2][BezierCurve::kLutSize]{};
+    std::atomic<int> activeLutIndex_ { 0 };
 
     float rmsSum_ = 0.0f;
     int rmsSampleCount_ = 0;

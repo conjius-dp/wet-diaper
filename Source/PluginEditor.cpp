@@ -83,6 +83,19 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processorRef.getAPVTS(), "bypass", bypassButton);
 
+    symButton.setClickingTogglesState(true);
+    symButton.setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    symButton.setConnectedEdges(0);
+    bool asym = !processorRef.isSymmetric();
+    symButton.getProperties().set("stateTarget", asym ? 1.0 : 0.0);
+    symButton.getProperties().set("stateProgress", asym ? 1.0 : 0.0);
+    symButton.onStateChange = [this]() {
+        symButton.getProperties().set("stateTarget", symButton.getToggleState() ? 1.0 : 0.0);
+    };
+    addAndMakeVisible(symButton);
+    symAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        processorRef.getAPVTS(), "asymmetric", symButton);
+
     logoImage = juce::ImageCache::getFromMemory(
         BinaryData::conjiusavatartransparentbg_png,
         BinaryData::conjiusavatartransparentbg_pngSize);
@@ -111,7 +124,6 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
     latencyHitArea.onHover = [this](bool over) { latencyHoverTarget = over; };
     addAndMakeVisible(latencyHitArea);
 
-    addMouseListener(this, true);
     startTimerHz(60);
 }
 
@@ -165,6 +177,19 @@ void WetDiaperAudioProcessorEditor::timerCallback()
     animateHover(driveSlider, driveSlider.isMouseOverOrDragging(true));
     animateHover(toneSlider, toneSlider.isMouseOverOrDragging(true));
     animateHover(volumeSlider, volumeSlider.isMouseOverOrDragging(true));
+    animateHover(symButton, symButton.isOver() || symButton.isDown());
+
+    {
+        auto& props = symButton.getProperties();
+        float stateDest = static_cast<float>(props.getWithDefault("stateTarget", 0.0));
+        float current = static_cast<float>(props.getWithDefault("stateProgress", 0.0));
+        if (std::abs(stateDest - current) > 0.002f)
+        {
+            current += (stateDest - current) * 0.20f;
+            props.set("stateProgress", current);
+            symButton.repaint();
+        }
+    }
 
     updateSnapAnimation(driveSlider, driveAnim);
     updateSnapAnimation(toneSlider, toneAnim);
@@ -173,13 +198,19 @@ void WetDiaperAudioProcessorEditor::timerCallback()
     float currentDrive  = processorRef.getAPVTS().getRawParameterValue("drive")->load();
     float currentVolume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
     float currentLevel  = processorRef.inputLevelRms.load();
+    int curVer = processorRef.curveVersion_.load(std::memory_order_relaxed);
+    bool curSym = processorRef.isSymmetric();
     if (std::abs(currentDrive - lastGraphDrive) > 0.001f
         || std::abs(currentVolume - lastGraphVolume) > 0.001f
-        || std::abs(currentLevel - lastGraphLevel) > 0.001f)
+        || std::abs(currentLevel - lastGraphLevel) > 0.001f
+        || curVer != lastCurveVersion
+        || curSym != lastSymmetric)
     {
         lastGraphDrive  = currentDrive;
         lastGraphVolume = currentVolume;
         lastGraphLevel  = currentLevel;
+        lastCurveVersion = curVer;
+        lastSymmetric = curSym;
         repaint(graphBounds);
     }
 
@@ -267,8 +298,8 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
 
         if (titleLogoImage.isValid())
         {
-            float logoX = 87.292f * scaleF;
-            float logoY = 104.0f * scaleF;
+            float logoX = 74.246f * scaleF;
+            float logoY = 74.0f * scaleF;
             float logoW = 109.0f * scaleF;
             float logoH = 71.0f * scaleF;
             float logoRot = juce::degreesToRadians(-5.554f);
@@ -288,7 +319,7 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
             g.setFont(conjusLAF.getBoldFont(subtitleFontSize));
             g.setColour(KnobDesign::accentColour);
             g.drawText("DISTORTION",
-                       64.546f * scaleF, 176.0f * scaleF,
+                       60.546f * scaleF, 145.5f * scaleF,
                        180.0f * scaleF, 16.0f * scaleF,
                        juce::Justification::centred);
         }
@@ -313,13 +344,25 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
             g.drawLine(gCx - tickLen, py, gCx + tickLen, py, tickStroke);
         }
 
+        gc_.gLeft = gLeft; gc_.gTop = gTop; gc_.gW = gW; gc_.gH = gH;
+        gc_.gCx = gCx; gc_.gCy = gCy; gc_.gRight = gRight; gc_.gBottom = gBottom;
+        gc_.scaleF = scaleF; gc_.valid = true;
+
         float drive  = processorRef.getAPVTS().getRawParameterValue("drive")->load();
         float volume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
         float level  = juce::jlimit(0.0f, 1.0f, processorRef.inputLevelRms.load());
 
+        float gain = (drive < 1e-6f) ? 1.0f : std::pow(100.0f, drive / 100.0f);
+        auto& curve = processorRef.getBezierCurve();
+        auto& leftCurve = processorRef.getLeftBezierCurve();
+        bool symmetric = processorRef.isSymmetric();
+
         auto yForX = [&](float xVal) -> float {
-            return ((drive < 1e-6f) ? xVal
-                    : std::tanh(xVal * drive) / std::tanh(drive)) * volume;
+            float xEff = std::clamp(xVal * gain, -1.0f, 1.0f);
+            float sign = (xEff < 0.0f) ? -1.0f : 1.0f;
+            auto& c = (!symmetric && xEff < 0.0f) ? leftCurve : curve;
+            float result = c.evaluate(std::abs(xEff));
+            return sign * result * volume;
         };
 
         auto buildSegment = [&](float t0, float t1, int steps) -> juce::Path {
@@ -361,12 +404,10 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
 
             g.setColour(KnobDesign::accentColour);
             g.strokePath(buildSegment(0.0f, tLow, nLow), stroke);
+            g.strokePath(buildSegment(tHigh, 1.0f, nHigh), stroke);
 
             g.setColour(KnobDesign::accentHoverColour);
             g.strokePath(buildSegment(tLow, tHigh, nMid), stroke);
-
-            g.setColour(KnobDesign::accentColour);
-            g.strokePath(buildSegment(tHigh, 1.0f, nHigh), stroke);
         }
 
         float labelSize = 13.0f * scaleF;
@@ -380,6 +421,97 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawText("-1",   423.0f * scaleF, 222.0f * scaleF, 18.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
         g.drawText("0.5",  387.0f * scaleF, 101.0f * scaleF, 20.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
         g.drawText("-0.5", 422.0f * scaleF, 182.0f * scaleF, 32.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
+
+        float pointR = 5.0f * scaleF;
+        float handleR = 3.0f * scaleF;
+        float handleStroke = 1.5f * scaleF;
+        float invGain = 1.0f / gain;
+        auto dimAccent = KnobDesign::accentHoverColour.withAlpha(0.4f);
+
+        auto drawControlPoint = [&](float bx, float by, bool negate, bool dim, bool selected)
+        {
+            float dx = bx * invGain;
+            float dy = by * volume;
+            auto px = negate ? bezierToPixel(-dx, -dy) : bezierToPixel(dx, dy);
+            auto col = selected ? KnobDesign::accentHoverColour.brighter(0.3f) : KnobDesign::accentHoverColour;
+            if (dim) col = dimAccent;
+            g.setColour(col);
+            g.fillEllipse(px.x - pointR, px.y - pointR, pointR * 2.0f, pointR * 2.0f);
+        };
+
+        auto drawHandle = [&](float ptBx, float ptBy, float hDx, float hDy, bool negate, bool dim)
+        {
+            float hx = ptBx + hDx;
+            float hy = ptBy + hDy;
+            float ptDispX = ptBx * invGain, ptDispY = ptBy * volume;
+            float hDispX = hx * invGain, hDispY = hy * volume;
+            juce::Point<float> ptPx, hPx;
+            if (negate)
+            {
+                ptPx = bezierToPixel(-ptDispX, -ptDispY);
+                hPx = bezierToPixel(-hDispX, -hDispY);
+            }
+            else
+            {
+                ptPx = bezierToPixel(ptDispX, ptDispY);
+                hPx = bezierToPixel(hDispX, hDispY);
+            }
+            auto col = dim ? dimAccent : KnobDesign::accentHoverColour.withAlpha(0.6f);
+            g.setColour(col);
+            juce::Path linePath;
+            linePath.startNewSubPath(ptPx);
+            linePath.lineTo(hPx);
+            juce::Path dashedPath;
+            float dashLens[] = { 4.0f * scaleF, 3.0f * scaleF };
+            juce::PathStrokeType(handleStroke).createDashedStroke(dashedPath, linePath, dashLens, 2);
+            g.fillPath(dashedPath);
+            g.fillEllipse(hPx.x - handleR, hPx.y - handleR, handleR * 2.0f, handleR * 2.0f);
+        };
+
+        auto startH = curve.getStartOutHandle();
+        drawHandle(0.0f, 0.0f, startH.dx, startH.dy, false, false);
+
+        auto endH = curve.getEndInHandle();
+        drawHandle(1.0f, 1.0f, endH.dx, endH.dy, false, false);
+
+        for (int i = 0; i < curve.getNumPoints(); ++i)
+        {
+            auto& pt = curve.getPoint(i);
+            bool sel = (dragTarget_.type == BezierHitType::Point
+                        && dragTarget_.pointIndex == i && !dragTarget_.leftCurve);
+            drawHandle(pt.x, pt.y, pt.in.dx, pt.in.dy, false, false);
+            drawHandle(pt.x, pt.y, pt.out.dx, pt.out.dy, false, false);
+            drawControlPoint(pt.x, pt.y, false, false, sel);
+        }
+
+        if (symmetric)
+        {
+            drawHandle(0.0f, 0.0f, startH.dx, startH.dy, true, true);
+            drawHandle(1.0f, 1.0f, endH.dx, endH.dy, true, true);
+            for (int i = 0; i < curve.getNumPoints(); ++i)
+            {
+                auto& pt = curve.getPoint(i);
+                drawHandle(pt.x, pt.y, pt.in.dx, pt.in.dy, true, true);
+                drawHandle(pt.x, pt.y, pt.out.dx, pt.out.dy, true, true);
+                drawControlPoint(pt.x, pt.y, true, true, false);
+            }
+        }
+        else
+        {
+            auto lStartH = leftCurve.getStartOutHandle();
+            drawHandle(0.0f, 0.0f, lStartH.dx, lStartH.dy, true, false);
+            auto lEndH = leftCurve.getEndInHandle();
+            drawHandle(1.0f, 1.0f, lEndH.dx, lEndH.dy, true, false);
+            for (int i = 0; i < leftCurve.getNumPoints(); ++i)
+            {
+                auto& pt = leftCurve.getPoint(i);
+                bool sel = (dragTarget_.type == BezierHitType::Point
+                            && dragTarget_.pointIndex == i && dragTarget_.leftCurve);
+                drawHandle(pt.x, pt.y, pt.in.dx, pt.in.dy, true, false);
+                drawHandle(pt.x, pt.y, pt.out.dx, pt.out.dy, true, false);
+                drawControlPoint(pt.x, pt.y, true, false, sel);
+            }
+        }
     }
 
 }
@@ -435,23 +567,20 @@ void WetDiaperAudioProcessorEditor::resized()
     float knobColX1 = w * 0.5f - halfCol;
     float knobColX2 = w * (513.0f / 650.0f) - halfCol;
 
-    const float labelFontSize = KnobDesign::columnLabelFontSize(w);
-    auto labelFont = conjusLAF.getBoldFont(labelFontSize);
-    driveLabel.setFont(labelFont);
-    toneLabel.setFont(labelFont);
-    volumeLabel.setFont(labelFont);
+    float sF = w / static_cast<float>(KnobDesign::defaultWidth);
+    driveLabel.setFont(conjusLAF.getBoldFont(20.0f * sF));
+    toneLabel.setFont(conjusLAF.getBoldFont(21.5f * sF));
+    volumeLabel.setFont(conjusLAF.getBoldFont(21.5f * sF));
 
-    const int labelH = static_cast<int>(KnobDesign::columnLabelHeight(w));
-    const int labelY = static_cast<int>(259.35f * (w / static_cast<float>(KnobDesign::defaultWidth)));
-    driveLabel.setBounds(static_cast<int>(knobColX0), labelY,
-                         static_cast<int>(knobColW), labelH);
-    toneLabel.setBounds(static_cast<int>(knobColX1), labelY,
-                        static_cast<int>(knobColW), labelH);
-    volumeLabel.setBounds(static_cast<int>(knobColX2), labelY,
-                          static_cast<int>(knobColW), labelH);
+    driveLabel.setBounds(static_cast<int>(105.5f * sF), static_cast<int>(259.35f * sF),
+                         static_cast<int>(53.0f * sF), static_cast<int>(17.0f * sF));
+    toneLabel.setBounds(static_cast<int>(301.0f * sF), static_cast<int>(259.35f * sF),
+                        static_cast<int>(48.0f * sF), static_cast<int>(17.0f * sF));
+    volumeLabel.setBounds(static_cast<int>(477.0f * sF), static_cast<int>(259.35f * sF),
+                          static_cast<int>(72.0f * sF), static_cast<int>(17.0f * sF));
 
     float dbFontSize = w * KnobDesign::dbTextScale;
-    int sliderBottom = static_cast<int>(h * 0.96f);
+    int sliderBottom = static_cast<int>(h * 0.918f);
     int sliderTop = static_cast<int>(h * 0.04f);
     int sliderH = sliderBottom - sliderTop;
 
@@ -505,7 +634,6 @@ void WetDiaperAudioProcessorEditor::resized()
     bypassButton.setRingStrokeWidth(knobStrokeW);
 
     {
-        float sF = w / static_cast<float>(KnobDesign::defaultWidth);
         float latencyFontSize = 11.0f * sF;
         int lx = static_cast<int>(266.0f * sF);
         int ly = static_cast<int>(548.0f * sF);
@@ -520,6 +648,86 @@ void WetDiaperAudioProcessorEditor::resized()
         int hitPadX = static_cast<int>(latencyFontSize * 0.8f);
         int hitPadY = lh;
         latencyHitArea.setBounds(lx - hitPadX, ly - hitPadY, lw + 2 * hitPadX, lh + hitPadY);
+    }
+
+    {
+        float btnFontSize = 15.0f * sF;
+        float knobDiam = w * 0.216f;
+        float knobStrokeW = knobDiam * KnobDesign::knobStrokeFrac;
+        float symBtnW = 95.0f * sF;
+        float symBtnH = 26.0f * sF;
+        float symBtnX = 82.86f * sF;
+        float symBtnY = 195.0f * sF;
+        symButton.setBounds(static_cast<int>(symBtnX), static_cast<int>(symBtnY),
+                            static_cast<int>(symBtnW), static_cast<int>(symBtnH));
+        symButton.setConnectedEdges(0);
+
+        struct PillButtonLAF : juce::LookAndFeel_V4
+        {
+            juce::Font font;
+            float knobStrokeW;
+            PillButtonLAF(juce::Font f, float ksw) : font(f), knobStrokeW(ksw) {}
+
+            static juce::Rectangle<float> pressBounds(juce::Button& button, bool isButtonDown)
+            {
+                auto b = button.getLocalBounds().toFloat();
+                if (isButtonDown)
+                    b = b.reduced(b.getWidth() * 0.04f, b.getHeight() * 0.10f);
+                return b;
+            }
+
+            void drawButtonBackground(juce::Graphics& g, juce::Button& button,
+                                      const juce::Colour&, bool, bool isButtonDown) override
+            {
+                auto bounds = pressBounds(button, isButtonDown);
+                float cornerR = bounds.getHeight() * 0.5f;
+                float hoverProgress = static_cast<float>(
+                    button.getProperties().getWithDefault("hoverProgress", 0.0));
+                float stateProgress = static_cast<float>(
+                    button.getProperties().getWithDefault("stateProgress", 0.0));
+                auto interactiveAccent = KnobDesign::accentColour
+                    .interpolatedWith(KnobDesign::accentHoverColour, hoverProgress);
+                auto fill = interactiveAccent.interpolatedWith(KnobDesign::bgColour, stateProgress);
+                g.setColour(fill);
+                g.fillRoundedRectangle(bounds, cornerR);
+                float borderW = knobStrokeW * 0.70f * stateProgress;
+                if (borderW > 0.001f)
+                {
+                    g.setColour(interactiveAccent);
+                    g.drawRoundedRectangle(bounds.reduced(borderW * 0.5f), cornerR, borderW);
+                }
+            }
+
+            void drawButtonText(juce::Graphics& g, juce::TextButton& button,
+                                bool, bool isButtonDown) override
+            {
+                auto bounds = pressBounds(button, isButtonDown);
+                float hoverProgress = static_cast<float>(
+                    button.getProperties().getWithDefault("hoverProgress", 0.0));
+                float stateProgress = static_cast<float>(
+                    button.getProperties().getWithDefault("stateProgress", 0.0));
+                auto interactiveAccent = KnobDesign::accentColour
+                    .interpolatedWith(KnobDesign::accentHoverColour, hoverProgress);
+                auto textColour = KnobDesign::bgColour.interpolatedWith(interactiveAccent, stateProgress);
+                float alphaSym  = juce::jmax(0.0f, 1.0f - 2.0f * stateProgress);
+                float alphaAsym = juce::jmax(0.0f, 2.0f * stateProgress - 1.0f);
+                g.setFont(font);
+                if (alphaSym > 0.001f)
+                {
+                    g.setColour(textColour.withMultipliedAlpha(alphaSym));
+                    g.drawText("Symmetric", bounds, juce::Justification::centred, false);
+                }
+                if (alphaAsym > 0.001f)
+                {
+                    g.setColour(textColour.withMultipliedAlpha(alphaAsym));
+                    g.drawText("Asymmetric", bounds, juce::Justification::centred, false);
+                }
+            }
+        };
+        static PillButtonLAF* pillLAF = nullptr;
+        if (pillLAF) delete pillLAF;
+        pillLAF = new PillButtonLAF(conjusLAF.getBoldFont(btnFontSize), knobStrokeW);
+        symButton.setLookAndFeel(pillLAF);
     }
 }
 
@@ -549,4 +757,238 @@ void WetDiaperAudioProcessorEditor::updateSnapAnimation(juce::Slider& slider, Sl
     }
 
     slider.setValue(anim.currentValue, juce::sendNotificationAsync);
+}
+
+juce::Point<float> WetDiaperAudioProcessorEditor::bezierToPixel(float bx, float by) const
+{
+    if (!gc_.valid) return {0, 0};
+    float t = (1.0f + bx) * 0.5f;
+    float px = gc_.gLeft + t * gc_.gW;
+    float py = gc_.gCy - by * gc_.gH * 0.5f;
+    return {px, py};
+}
+
+juce::Point<float> WetDiaperAudioProcessorEditor::pixelToBezier(float px, float py) const
+{
+    if (!gc_.valid) return {0, 0};
+    float t = (px - gc_.gLeft) / gc_.gW;
+    float bx = -1.0f + 2.0f * t;
+    float by = -(py - gc_.gCy) / (gc_.gH * 0.5f);
+    return {bx, by};
+}
+
+bool WetDiaperAudioProcessorEditor::isInGraphArea(float px, float py) const
+{
+    if (!gc_.valid) return false;
+    return px >= gc_.gLeft && px <= gc_.gRight && py >= gc_.gTop && py <= gc_.gBottom;
+}
+
+WetDiaperAudioProcessorEditor::BezierHit
+WetDiaperAudioProcessorEditor::findBezierHit(float mx, float my) const
+{
+    if (!gc_.valid) return {};
+
+    float drive = processorRef.getAPVTS().getRawParameterValue("drive")->load();
+    float volume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
+    float gain = (drive < 1e-6f) ? 1.0f : std::pow(100.0f, drive / 100.0f);
+    float invGain = 1.0f / gain;
+    bool symmetric = processorRef.isSymmetric();
+    float hitR = 8.0f * gc_.scaleF;
+    float handleHitR = 6.0f * gc_.scaleF;
+    float bestDist = hitR;
+    BezierHit best;
+
+    auto checkAt = [&](float dispX, float dispY, BezierHitType type, int idx,
+                       bool isLeft, float threshold)
+    {
+        auto px = bezierToPixel(dispX, dispY);
+        float d = std::hypot(mx - px.x, my - px.y);
+        if (d < threshold && d < bestDist)
+        {
+            bestDist = d;
+            best = {type, idx, isLeft};
+        }
+    };
+
+    auto checkCurve = [&](const BezierCurve& c, bool negate, bool isLeft)
+    {
+        float sign = negate ? -1.0f : 1.0f;
+        auto sh = c.getStartOutHandle();
+        float hx = sh.dx * invGain * sign, hy = sh.dy * volume * sign;
+        checkAt(hx, hy, BezierHitType::StartOutHandle, -1, isLeft, handleHitR);
+
+        auto eh = c.getEndInHandle();
+        float ehx = (1.0f + eh.dx) * invGain * sign;
+        float ehy = (1.0f + eh.dy) * volume * sign;
+        checkAt(ehx, ehy, BezierHitType::EndInHandle, -1, isLeft, handleHitR);
+
+        for (int i = 0; i < c.getNumPoints(); ++i)
+        {
+            auto& pt = c.getPoint(i);
+            float pdx = pt.x * invGain * sign, pdy = pt.y * volume * sign;
+            checkAt(pdx, pdy, BezierHitType::Point, i, isLeft, hitR);
+
+            float ihx = (pt.x + pt.in.dx) * invGain * sign;
+            float ihy = (pt.y + pt.in.dy) * volume * sign;
+            checkAt(ihx, ihy, BezierHitType::InHandle, i, isLeft, handleHitR);
+
+            float ohx = (pt.x + pt.out.dx) * invGain * sign;
+            float ohy = (pt.y + pt.out.dy) * volume * sign;
+            checkAt(ohx, ohy, BezierHitType::OutHandle, i, isLeft, handleHitR);
+        }
+    };
+
+    auto& curve = processorRef.getBezierCurve();
+    checkCurve(curve, false, false);
+
+    if (symmetric)
+    {
+        checkCurve(curve, true, false);
+    }
+    else
+    {
+        auto& leftCurve = processorRef.getLeftBezierCurve();
+        checkCurve(leftCurve, true, true);
+    }
+
+    return best;
+}
+
+float WetDiaperAudioProcessorEditor::distToNearestCurvePoint(float bx, float by) const
+{
+    float drive = processorRef.getAPVTS().getRawParameterValue("drive")->load();
+    float volume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
+    float gain = (drive < 1e-6f) ? 1.0f : std::pow(100.0f, drive / 100.0f);
+    bool symmetric = processorRef.isSymmetric();
+
+    float xEff = std::clamp(bx * gain, -1.0f, 1.0f);
+    float sign = (xEff < 0.0f) ? -1.0f : 1.0f;
+    auto& c = (!symmetric && xEff < 0.0f) ? processorRef.getLeftBezierCurve()
+                                           : processorRef.getBezierCurve();
+    float curveY = sign * c.evaluate(std::abs(xEff)) * volume;
+
+    auto curvePx = bezierToPixel(bx, curveY);
+    auto pointPx = bezierToPixel(bx, by);
+    return std::hypot(curvePx.x - pointPx.x, curvePx.y - pointPx.y);
+}
+
+void WetDiaperAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
+{
+    float mx = static_cast<float>(e.getPosition().x);
+    float my = static_cast<float>(e.getPosition().y);
+
+    if (!isInGraphArea(mx, my))
+        return;
+
+    auto hit = findBezierHit(mx, my);
+    if (hit.type != BezierHitType::None)
+    {
+        dragTarget_ = hit;
+        dragging_ = true;
+    }
+}
+
+void WetDiaperAudioProcessorEditor::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!dragging_) return;
+
+    float mx = static_cast<float>(e.getPosition().x);
+    float my = static_cast<float>(e.getPosition().y);
+    auto bz = pixelToBezier(mx, my);
+    float drive = processorRef.getAPVTS().getRawParameterValue("drive")->load();
+    float volume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
+    float gain = (drive < 1e-6f) ? 1.0f : std::pow(100.0f, drive / 100.0f);
+    float rawY = (std::abs(volume) > 1e-6f) ? bz.y / volume : bz.y;
+    float absBx = std::abs(bz.x) * gain;
+    float absby = (bz.x < 0.0f) ? -rawY : rawY;
+
+    auto& targetCurve = dragTarget_.leftCurve ? processorRef.getLeftBezierCurve()
+                                              : processorRef.getBezierCurve();
+
+    switch (dragTarget_.type)
+    {
+        case BezierHitType::Point:
+            targetCurve.movePoint(dragTarget_.pointIndex, absBx, absby);
+            break;
+        case BezierHitType::InHandle:
+        {
+            auto& pt = targetCurve.getPoint(dragTarget_.pointIndex);
+            float dx = absBx - pt.x;
+            float dy = absby - pt.y;
+            targetCurve.moveInHandle(dragTarget_.pointIndex, dx, dy);
+            break;
+        }
+        case BezierHitType::OutHandle:
+        {
+            auto& pt = targetCurve.getPoint(dragTarget_.pointIndex);
+            float dx = absBx - pt.x;
+            float dy = absby - pt.y;
+            targetCurve.moveOutHandle(dragTarget_.pointIndex, dx, dy);
+            break;
+        }
+        case BezierHitType::StartOutHandle:
+            targetCurve.moveStartOutHandle(absBx, absby);
+            break;
+        case BezierHitType::EndInHandle:
+        {
+            float dx = absBx - 1.0f;
+            float dy = absby - 1.0f;
+            targetCurve.moveEndInHandle(dx, dy);
+            break;
+        }
+        default:
+            break;
+    }
+
+    processorRef.rebuildLUT();
+    repaint(graphBounds);
+}
+
+void WetDiaperAudioProcessorEditor::mouseUp(const juce::MouseEvent&)
+{
+    dragging_ = false;
+    dragTarget_ = {};
+}
+
+void WetDiaperAudioProcessorEditor::mouseDoubleClick(const juce::MouseEvent& e)
+{
+    float mx = static_cast<float>(e.getPosition().x);
+    float my = static_cast<float>(e.getPosition().y);
+
+    if (!isInGraphArea(mx, my))
+        return;
+
+    auto hit = findBezierHit(mx, my);
+    if (hit.type == BezierHitType::Point)
+    {
+        auto& targetCurve = hit.leftCurve ? processorRef.getLeftBezierCurve()
+                                          : processorRef.getBezierCurve();
+        targetCurve.removePoint(hit.pointIndex);
+        processorRef.rebuildLUT();
+        repaint(graphBounds);
+        return;
+    }
+
+    auto bz = pixelToBezier(mx, my);
+    float drive = processorRef.getAPVTS().getRawParameterValue("drive")->load();
+    float volume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
+    float gain = (drive < 1e-6f) ? 1.0f : std::pow(100.0f, drive / 100.0f);
+    bool symmetric = processorRef.isSymmetric();
+    float rawY = (std::abs(volume) > 1e-6f) ? bz.y / volume : bz.y;
+    float absBx = std::clamp(std::abs(bz.x) * gain, 0.0f, 1.0f);
+    float absby = (bz.x < 0.0f) ? -rawY : rawY;
+
+    float curveHitDist = distToNearestCurvePoint(bz.x, bz.y);
+    if (curveHitDist > 12.0f * gc_.scaleF)
+        return;
+
+    bool useLeft = !symmetric && bz.x < 0.0f;
+    auto& targetCurve = useLeft ? processorRef.getLeftBezierCurve()
+                                : processorRef.getBezierCurve();
+    int idx = targetCurve.addPoint(absBx, absby);
+    if (idx >= 0)
+    {
+        processorRef.rebuildLUT();
+        repaint(graphBounds);
+    }
 }
