@@ -50,7 +50,8 @@ namespace KnobDesign
 enum class KnobType
 {
     Drive,
-    Tone
+    Tone,
+    Volume
 };
 
 class ConjusKnobLookAndFeel : public juce::LookAndFeel_V4
@@ -138,7 +139,7 @@ public:
         float parentH = 0.0f;
         if (auto* editor = slider.getParentComponent())
             parentH = static_cast<float>(editor->getHeight());
-        const float knobShiftBase = (knobType == KnobType::Drive) ? 103.0f : 113.0f;
+        const float knobShiftBase = 103.0f;
         const float knobShiftDown = knobShiftBase * (parentH > 0.0f
                                              ? parentH / static_cast<float>(KnobDesign::defaultHeight)
                                              : 1.0f);
@@ -183,7 +184,8 @@ public:
         float tickStartR = radius * tickGap;
         float tickEndR = radius * (tickGap + tickLength);
 
-        float defaultNorm = (knobType == KnobType::Drive) ? 0.407f : 0.5f;
+        float defaultNorm = (knobType == KnobType::Drive) ? 0.407f
+                           : (knobType == KnobType::Tone) ? 0.5f : 0.8f;
 
         float tickAngles[3] = {
             juce::degreesToRadians(rotationStartAngle),
@@ -192,20 +194,25 @@ public:
         };
 
         g.setColour(accentColour);
+        float halfTickW = tickW * 0.5f;
         for (int i = 0; i < 3; ++i)
         {
             juce::Path tick;
-            tick.startNewSubPath(cx + std::sin(tickAngles[i]) * tickStartR,
-                                cy - std::cos(tickAngles[i]) * tickStartR);
-            tick.lineTo(cx + std::sin(tickAngles[i]) * tickEndR,
-                        cy - std::cos(tickAngles[i]) * tickEndR);
+            tick.startNewSubPath(cx + std::sin(tickAngles[i]) * (tickStartR + halfTickW),
+                                cy - std::cos(tickAngles[i]) * (tickStartR + halfTickW));
+            tick.lineTo(cx + std::sin(tickAngles[i]) * (tickEndR - halfTickW),
+                        cy - std::cos(tickAngles[i]) * (tickEndR - halfTickW));
             g.strokePath(tick,
                          juce::PathStrokeType(tickW,
                                               juce::PathStrokeType::curved,
                                               juce::PathStrokeType::rounded));
         }
 
-        float fontSize = diameter * labelFontScale;
+        float parentW = 0.0f;
+        if (auto* ed = slider.getParentComponent())
+            parentW = static_cast<float>(ed->getWidth());
+        float refDiam = (parentW > 0.0f) ? parentW * 0.216f : diameter;
+        float fontSize = refDiam * labelFontScale;
         float markerFontSize = fontSize * 0.85f;
         g.setColour(accentColour);
         g.setFont(getBoldFont(markerFontSize));
@@ -220,10 +227,16 @@ public:
             midLabel   = "5";
             rightLabel = "100";
         }
-        else
+        else if (knobType == KnobType::Tone)
         {
             leftLabel  = "0";
             midLabel   = "50";
+            rightLabel = "100";
+        }
+        else
+        {
+            leftLabel  = "0";
+            midLabel   = "80";
             rightLabel = "100";
         }
 
@@ -244,9 +257,8 @@ public:
                    juce::Justification::centred, false);
 
         float aMid = normToAngleRad(defaultNorm);
-        float topLabelR = tickEndR + markerFontSize * 0.3f;
-        float lxM = cx + std::sin(aMid) * topLabelR;
-        float lyM = cy - std::cos(aMid) * topLabelR - markerFontSize * 0.5f;
+        float lxM = cx + std::sin(aMid) * labelR;
+        float lyM = cy - std::cos(aMid) * labelR + labelYOffset;
         g.drawText(midLabel,
                    juce::Rectangle<float>(lxM - fontSize * 2.5f, lyM - markerFontSize * 0.5f,
                                           fontSize * 5.0f, markerFontSize * 1.2f),
@@ -263,7 +275,7 @@ public:
             auto* slider = dynamic_cast<juce::Slider*>(label.getParentComponent());
             auto knobType = slider ? getKnobType(*slider) : KnobType::Drive;
 
-            juce::String suffix = (knobType == KnobType::Tone) ? " %" : "";
+            juce::String suffix = (knobType == KnobType::Tone || knobType == KnobType::Volume) ? " %" : "";
 
             auto* editor = slider ? slider->getParentComponent() : nullptr;
             float windowH = editor ? static_cast<float>(editor->getHeight()) : 570.0f;
@@ -276,9 +288,11 @@ public:
             float suffixW = suffix.isEmpty() ? 0.0f : KnobDesign::stringWidth(pillFont, suffix);
             float totalW = valueW + suffixW;
 
+            float windowW = editor ? static_cast<float>(editor->getWidth()) : 650.0f;
+            float knobDiam = windowW * 0.1512f;
             float pillH = pillFontSize * 1.5f;
             float padX = pillH * 0.45f;
-            float pillW = totalW + 2.0f * padX;
+            float pillW = juce::jmax(totalW + 2.0f * padX, knobDiam);
 
             float labelW = static_cast<float>(label.getWidth());
             float pillX = (labelW - pillW) * 0.5f;

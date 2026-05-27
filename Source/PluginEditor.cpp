@@ -21,18 +21,29 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
     toneSlider.setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
     addAndMakeVisible(toneSlider);
 
+    volumeSlider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
+    volumeSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 120, 30);
+    ConjusKnobLookAndFeel::setKnobType(volumeSlider, KnobType::Volume);
+    volumeSlider.setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
+    addAndMakeVisible(volumeSlider);
+
     driveLabel.setJustificationType(juce::Justification::centredBottom);
     addAndMakeVisible(driveLabel);
     toneLabel.setJustificationType(juce::Justification::centredBottom);
     addAndMakeVisible(toneLabel);
+    volumeLabel.setJustificationType(juce::Justification::centredBottom);
+    addAndMakeVisible(volumeLabel);
 
     driveLabel.toBack();
     toneLabel.toBack();
+    volumeLabel.toBack();
 
     driveAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processorRef.getAPVTS(), "drive", driveSlider);
     toneAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processorRef.getAPVTS(), "tone", toneSlider);
+    volumeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        processorRef.getAPVTS(), "volume", volumeSlider);
 
     driveSlider.textFromValueFunction = [](double value) -> juce::String {
         return juce::String(value, 1);
@@ -50,11 +61,22 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
     };
     toneSlider.updateText();
 
+    volumeSlider.textFromValueFunction = [](double value) -> juce::String {
+        return juce::String(value * 100.0, 1) + " %";
+    };
+    volumeSlider.valueFromTextFunction = [](const juce::String& text) -> double {
+        return text.getDoubleValue() / 100.0;
+    };
+    volumeSlider.updateText();
+
     driveSlider.onDoubleClick = [this]() {
         startSnapAnimation(driveSlider, driveAnim);
     };
     toneSlider.onDoubleClick = [this]() {
         startSnapAnimation(toneSlider, toneAnim);
+    };
+    volumeSlider.onDoubleClick = [this]() {
+        startSnapAnimation(volumeSlider, volumeAnim);
     };
 
     addAndMakeVisible(bypassButton);
@@ -134,14 +156,19 @@ void WetDiaperAudioProcessorEditor::timerCallback()
     };
     animateHover(driveSlider, driveSlider.isMouseOverOrDragging(true));
     animateHover(toneSlider, toneSlider.isMouseOverOrDragging(true));
+    animateHover(volumeSlider, volumeSlider.isMouseOverOrDragging(true));
 
     updateSnapAnimation(driveSlider, driveAnim);
     updateSnapAnimation(toneSlider, toneAnim);
+    updateSnapAnimation(volumeSlider, volumeAnim);
 
-    float currentDrive = processorRef.getAPVTS().getRawParameterValue("drive")->load();
-    if (std::abs(currentDrive - lastGraphDrive) > 0.001f)
+    float currentDrive  = processorRef.getAPVTS().getRawParameterValue("drive")->load();
+    float currentVolume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
+    if (std::abs(currentDrive - lastGraphDrive) > 0.001f
+        || std::abs(currentVolume - lastGraphVolume) > 0.001f)
     {
-        lastGraphDrive = currentDrive;
+        lastGraphDrive  = currentDrive;
+        lastGraphVolume = currentVolume;
         repaint(graphBounds);
     }
 }
@@ -214,7 +241,8 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
             g.drawLine(gCx - tickLen, py, gCx + tickLen, py, tickStroke);
         }
 
-        float drive = processorRef.getAPVTS().getRawParameterValue("drive")->load();
+        float drive  = processorRef.getAPVTS().getRawParameterValue("drive")->load();
+        float volume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
 
         juce::Path curve;
         const int N = 300;
@@ -224,6 +252,7 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
             float xVal = -1.0f + 2.0f * t;
             float yVal = (drive < 1e-6f) ? xVal
                          : std::tanh(xVal * drive) / std::tanh(drive);
+            yVal *= volume;
             float px = gLeft + t * gW;
             float py = gCy - yVal * gH * 0.5f;
             if (i == 0) curve.startNewSubPath(px, py);
@@ -247,30 +276,6 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawText("-0.5", 327.0f * scaleF, 167.0f * scaleF, 32.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
     }
 
-    if (titleLogoImage.isValid())
-    {
-        float titleX = 271.5f * scaleF;
-        float titleY = 276.42f * scaleF;
-        float titleW = 107.0f * scaleF;
-        float titleH = 81.4f * scaleF;
-        float logoCx = titleX + titleW * 0.5f;
-        float logoCy = titleY + titleH * 0.5f;
-        g.saveState();
-        g.addTransform(juce::AffineTransform::rotation(
-            juce::degreesToRadians(-6.087f), logoCx, logoCy));
-        g.drawImage(titleLogoImage,
-                    juce::Rectangle<float>(titleX, titleY, titleW, titleH),
-                    juce::RectanglePlacement::centred);
-        g.restoreState();
-
-        float subFontSize = 13.5f * scaleF;
-        auto subFont = conjusLAF.getBoldFont(subFontSize);
-        g.setFont(subFont);
-        g.setColour(KnobDesign::accentHoverColour);
-        g.drawText("DISTORTION",
-                   juce::Rectangle<float>(286.0f * scaleF, 360.292f * scaleF, 102.0f * scaleF, 16.0f * scaleF),
-                   juce::Justification::centred, false);
-    }
 }
 
 void WetDiaperAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
@@ -318,23 +323,26 @@ void WetDiaperAudioProcessorEditor::resized()
         bypassButton.toFront(false);
     }
 
-    float margin = w * 0.057f;
-    float knobColW = w * 0.40f;
-    float knobColX0 = margin;
-    float knobColX1 = w - margin - knobColW;
+    float knobColW = w * 0.28f;
+    float halfCol = knobColW * 0.5f;
+    float knobColX0 = w * (132.0f / 650.0f) - halfCol;
+    float knobColX1 = w * 0.5f - halfCol;
+    float knobColX2 = w * (513.0f / 650.0f) - halfCol;
 
     const float labelFontSize = KnobDesign::columnLabelFontSize(w);
     auto labelFont = conjusLAF.getBoldFont(labelFontSize);
     driveLabel.setFont(labelFont);
     toneLabel.setFont(labelFont);
+    volumeLabel.setFont(labelFont);
 
     const int labelH = static_cast<int>(KnobDesign::columnLabelHeight(w));
-    const int driveLabelY = static_cast<int>(h * 0.4278f);
-    const int toneLabelY  = static_cast<int>(h * 0.4278f);
-    driveLabel.setBounds(static_cast<int>(knobColX0), driveLabelY,
+    const int labelY = static_cast<int>(h * 0.4269f);
+    driveLabel.setBounds(static_cast<int>(knobColX0), labelY,
                          static_cast<int>(knobColW), labelH);
-    toneLabel.setBounds(static_cast<int>(knobColX1), toneLabelY,
+    toneLabel.setBounds(static_cast<int>(knobColX1), labelY,
                         static_cast<int>(knobColW), labelH);
+    volumeLabel.setBounds(static_cast<int>(knobColX2), labelY,
+                          static_cast<int>(knobColW), labelH);
 
     float dbFontSize = w * KnobDesign::dbTextScale;
     int sliderBottom = static_cast<int>(h * 0.96f);
@@ -347,6 +355,7 @@ void WetDiaperAudioProcessorEditor::resized()
     float sliderBoundsW = knobColW * 0.90f;
     float sliderOffset0 = knobColX0 + (knobColW - sliderBoundsW) * 0.5f;
     float sliderOffset1 = knobColX1 + (knobColW - sliderBoundsW) * 0.5f;
+    float sliderOffset2 = knobColX2 + (knobColW - sliderBoundsW) * 0.5f;
 
     int textBoxW = static_cast<int>(sliderBoundsW * 0.95f);
     int textBoxH = static_cast<int>(dbFontSize * 2.6f);
@@ -361,7 +370,12 @@ void WetDiaperAudioProcessorEditor::resized()
     toneSlider.setBounds(static_cast<int>(sliderOffset1), sliderTopEditor,
                          static_cast<int>(sliderBoundsW), sliderH);
 
-    for (auto* slider : { &driveSlider, &toneSlider })
+    volumeSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, textBoxW, textBoxH);
+    volumeSlider.setMouseDragSensitivity(static_cast<int>(w * 0.5f));
+    volumeSlider.setBounds(static_cast<int>(sliderOffset2), sliderTopEditor,
+                           static_cast<int>(sliderBoundsW), sliderH);
+
+    for (auto* slider : { &driveSlider, &toneSlider, &volumeSlider })
     {
         slider->setPaintingIsUnclipped(true);
         if (auto* textBox = slider->getChildComponent(0))
@@ -387,8 +401,9 @@ void WetDiaperAudioProcessorEditor::resized()
 
 void WetDiaperAudioProcessorEditor::startSnapAnimation(juce::Slider& slider, SliderAnimation& anim)
 {
-    auto* param = processorRef.getAPVTS().getParameter(
-        &slider == &driveSlider ? "drive" : "tone");
+    const char* paramId = (&slider == &driveSlider) ? "drive"
+                         : (&slider == &toneSlider) ? "tone" : "volume";
+    auto* param = processorRef.getAPVTS().getParameter(paramId);
     if (param == nullptr) return;
 
     anim.currentValue = slider.getValue();

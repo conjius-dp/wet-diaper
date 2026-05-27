@@ -146,6 +146,58 @@ public:
             expectEquals(od.getTone(), 100.0f);
         }
 
+        beginTest("volume default is 1.0");
+        {
+            Overdrive od;
+            expectEquals(od.getVolume(), 1.0f);
+        }
+
+        beginTest("volume scales output");
+        {
+            Overdrive od;
+            od.prepare(44100.0, 512);
+            od.setDrive(0.0f);
+            od.setTone(100.0f);
+            od.setVolume(0.5f);
+
+            std::vector<float> warmup(4096, 0.5f);
+            od.processMono(warmup.data(), 4096);
+
+            std::vector<float> buf(512, 0.5f);
+            od.processMono(buf.data(), 512);
+
+            float last = buf.back();
+            expect(std::abs(last - 0.25f) < 0.02f,
+                   "volume=0.5 with identity drive should halve the output");
+        }
+
+        beginTest("volume zero produces silence");
+        {
+            Overdrive od;
+            od.prepare(44100.0, 512);
+            od.setDrive(5.0f);
+            od.setTone(100.0f);
+            od.setVolume(0.0f);
+
+            std::vector<float> warmup(4096, 0.5f);
+            od.processMono(warmup.data(), 4096);
+
+            std::vector<float> buf(512, 0.5f);
+            od.processMono(buf.data(), 512);
+
+            for (auto s : buf)
+                expectEquals(s, 0.0f);
+        }
+
+        beginTest("volume parameter clamping");
+        {
+            Overdrive od;
+            od.setVolume(-1.0f);
+            expectEquals(od.getVolume(), 0.0f);
+            od.setVolume(2.0f);
+            expectEquals(od.getVolume(), 1.0f);
+        }
+
         beginTest("no latency");
         {
             Overdrive od;

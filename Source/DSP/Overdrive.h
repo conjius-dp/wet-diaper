@@ -14,15 +14,18 @@ public:
 
     void setDrive(float driveAmount);
     void setTone(float toneNorm);
+    void setVolume(float v);
 
     float getDrive() const { return drive_; }
     float getTone() const { return tone_; }
+    float getVolume() const { return volume_; }
     double getSampleRate() const { return sampleRate_; }
 
 private:
     double sampleRate_ = 44100.0;
     float drive_ = 5.0f;
     float tone_ = 50.0f;
+    float volume_ = 1.0f;
 
     float toneStateL_ = 0.0f;
     float toneCoeff_ = 0.0f;

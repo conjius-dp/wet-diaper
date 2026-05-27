@@ -26,7 +26,7 @@ public:
         if (auto* editor = getParentComponent())
             parentH = static_cast<float>(editor->getHeight());
         auto kt = ConjusKnobLookAndFeel::getKnobType(*this);
-        const float knobShiftBase = (kt == KnobType::Drive) ? 103.0f : 113.0f;
+        const float knobShiftBase = 103.0f;
         const float knobShift = knobShiftBase * (parentH / static_cast<float>(KnobDesign::defaultHeight));
 
         float d = juce::jmin(juce::jmin(sw, sh) * 0.78f, sw * 0.60f);
@@ -74,14 +74,17 @@ private:
 
     AnimatedSlider driveSlider;
     AnimatedSlider toneSlider;
-    juce::Label driveLabel { {}, "DRIVE" };
-    juce::Label toneLabel  { {}, "TONE" };
+    AnimatedSlider volumeSlider;
+    juce::Label driveLabel  { {}, "DRIVE" };
+    juce::Label toneLabel   { {}, "TONE" };
+    juce::Label volumeLabel { {}, "VOLUME" };
 
     BypassButton bypassButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> driveAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> toneAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> volumeAttachment;
 
     juce::Image logoImage;
     juce::Image titleLogoImage;
@@ -90,7 +93,8 @@ private:
 
     juce::Rectangle<int> logoBounds;
     juce::Rectangle<int> graphBounds;
-    float lastGraphDrive = -1.0f;
+    float lastGraphDrive  = -1.0f;
+    float lastGraphVolume = -1.0f;
     bool  logoHoverTarget   = false;
     float logoHoverProgress = 0.0f;
 
@@ -102,6 +106,7 @@ private:
     };
     SliderAnimation driveAnim;
     SliderAnimation toneAnim;
+    SliderAnimation volumeAnim;
 
     void startSnapAnimation(juce::Slider& slider, SliderAnimation& anim);
     void updateSnapAnimation(juce::Slider& slider, SliderAnimation& anim);

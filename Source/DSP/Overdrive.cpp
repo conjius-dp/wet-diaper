@@ -25,6 +25,11 @@ void Overdrive::setTone(float toneNorm)
     updateToneCoeff();
 }
 
+void Overdrive::setVolume(float v)
+{
+    volume_ = std::clamp(v, 0.0f, 1.0f);
+}
+
 void Overdrive::processMono(float* samples, int numSamples)
 {
     for (int i = 0; i < numSamples; ++i)
@@ -34,7 +39,7 @@ void Overdrive::processMono(float* samples, int numSamples)
         toneStateL_ += toneCoeff_ * (wet - toneStateL_);
         wet = toneStateL_;
 
-        samples[i] = wet;
+        samples[i] = wet * volume_;
     }
 }
 

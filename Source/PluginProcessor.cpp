@@ -23,6 +23,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout WetDiaperAudioProcessor::cre
         juce::ParameterID("tone", 1), "Tone",
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f));
 
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID("volume", 1), "Volume",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.8f));
+
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID("bypass", 1), "Bypass", false));
 
@@ -89,10 +93,11 @@ void WetDiaperAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    const float drive = apvts.getRawParameterValue("drive")->load();
-    const float tone  = apvts.getRawParameterValue("tone")->load();
+    const float drive  = apvts.getRawParameterValue("drive")->load();
+    const float tone   = apvts.getRawParameterValue("tone")->load();
+    const float volume = apvts.getRawParameterValue("volume")->load();
 
-    for (auto& d : drives) { d.setDrive(drive); d.setTone(tone); }
+    for (auto& d : drives) { d.setDrive(drive); d.setTone(tone); d.setVolume(volume); }
 
     drives[0].processMono(buffer.getWritePointer(0), numSamples);
     for (int ch = 1; ch < numCh; ++ch)
