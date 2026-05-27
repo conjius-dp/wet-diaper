@@ -20,7 +20,7 @@
   <a href="https://github.com/conjius-dp/wet-diaper/releases"><img src="https://img.shields.io/github/downloads/conjius-dp/wet-diaper/total?label=downloads&color=blue" alt="Total downloads"></a>
 </p>
 
-Distortion/overdrive effect. Soft-clip tanh waveshaping with adjustable tone filter. Drive from clean identity to hard clip.
+Distortion/overdrive effect. Soft-clip tanh waveshaping with adjustable tone filter and output volume. Drive from clean identity to hard clip.
 
 VST3 (macOS, Windows), AU + Standalone (macOS). Stereo in/out. Zero latency.
 
@@ -28,7 +28,8 @@ VST3 (macOS, Windows), AU + Standalone (macOS). Stereo in/out. Zero latency.
 
 1. Set **Drive** for distortion amount (0 = clean, 100 = hard clip).
 2. Adjust **Tone** to shape the post-distortion frequency response.
-3. Power button (top-right) hard-bypasses the plugin.
+3. Set **Volume** to control the output level after waveshaping.
+4. Power button (top-right) hard-bypasses the plugin.
 
 ## Parameters
 
@@ -36,6 +37,7 @@ VST3 (macOS, Windows), AU + Standalone (macOS). Stereo in/out. Zero latency.
 |---|---|---|
 | Drive | 0 - 100 | 5.0 |
 | Tone | 0% - 100% | 50.0% |
+| Volume | 0% - 100% | 80.0% |
 | Bypass | on / off | off |
 
 ## Build
