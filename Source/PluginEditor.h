@@ -95,8 +95,26 @@ private:
     juce::Rectangle<int> graphBounds;
     float lastGraphDrive  = -1.0f;
     float lastGraphVolume = -1.0f;
+    float lastGraphLevel  = -1.0f;
     bool  logoHoverTarget   = false;
     float logoHoverProgress = 0.0f;
+
+    juce::Label latencyLabel { {}, "LATENCY: 0.0ms" };
+    struct HitArea : juce::Component
+    {
+        std::function<void()> onClick;
+        std::function<void(bool)> onHover;
+        void mouseDown(const juce::MouseEvent&) override { if (onClick) onClick(); }
+        void mouseEnter(const juce::MouseEvent&) override { if (onHover) onHover(true); }
+        void mouseExit(const juce::MouseEvent&) override { if (onHover) onHover(false); }
+    };
+    HitArea latencyHitArea;
+    juce::Rectangle<int> latencyBaseBounds;
+    float latencyBaseFontSize  = 1.0f;
+    bool  latencyHoverTarget   = false;
+    float latencyHoverProgress = 0.0f;
+    bool  latencyHidden        = false;
+    float latencyHideProgress  = 0.0f;
 
     struct SliderAnimation
     {

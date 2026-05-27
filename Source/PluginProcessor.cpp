@@ -25,7 +25,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout WetDiaperAudioProcessor::cre
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("volume", 1), "Volume",
-        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.8f));
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.5f));
 
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID("bypass", 1), "Bypass", false));
@@ -48,6 +48,9 @@ void WetDiaperAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
 {
     for (auto& d : drives) d.prepare(sampleRate, samplesPerBlock);
     setLatencySamples(0);
+    rmsWindowSize_ = juce::jmax(1, static_cast<int>(sampleRate / 60.0));
+    rmsSum_ = 0.0f;
+    rmsSampleCount_ = 0;
 }
 
 void WetDiaperAudioProcessor::releaseResources()
@@ -85,6 +88,20 @@ void WetDiaperAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, numSamples);
+
+    {
+        const float* in = buffer.getReadPointer(0);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            rmsSum_ += in[i] * in[i];
+            if (++rmsSampleCount_ >= rmsWindowSize_)
+            {
+                inputLevelRms.store(std::sqrt(rmsSum_ / static_cast<float>(rmsSampleCount_)));
+                rmsSum_ = 0.0f;
+                rmsSampleCount_ = 0;
+            }
+        }
+    }
 
     if (apvts.getRawParameterValue("bypass")->load() >= 0.5f)
     {

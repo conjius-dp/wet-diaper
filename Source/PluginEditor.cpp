@@ -103,6 +103,14 @@ WetDiaperAudioProcessorEditor::WetDiaperAudioProcessorEditor(WetDiaperAudioProce
         static_cast<double>(KnobDesign::defaultWidth) / KnobDesign::defaultHeight);
     setSize(savedW, savedH);
 
+    latencyLabel.setJustificationType(juce::Justification::centredBottom);
+    latencyLabel.setColour(juce::Label::textColourId, KnobDesign::accentColour);
+    addAndMakeVisible(latencyLabel);
+
+    latencyHitArea.onClick = [this]() { latencyHidden = !latencyHidden; };
+    latencyHitArea.onHover = [this](bool over) { latencyHoverTarget = over; };
+    addAndMakeVisible(latencyHitArea);
+
     addMouseListener(this, true);
     startTimerHz(60);
 }
@@ -164,12 +172,48 @@ void WetDiaperAudioProcessorEditor::timerCallback()
 
     float currentDrive  = processorRef.getAPVTS().getRawParameterValue("drive")->load();
     float currentVolume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
+    float currentLevel  = processorRef.inputLevelRms.load();
     if (std::abs(currentDrive - lastGraphDrive) > 0.001f
-        || std::abs(currentVolume - lastGraphVolume) > 0.001f)
+        || std::abs(currentVolume - lastGraphVolume) > 0.001f
+        || std::abs(currentLevel - lastGraphLevel) > 0.001f)
     {
         lastGraphDrive  = currentDrive;
         lastGraphVolume = currentVolume;
+        lastGraphLevel  = currentLevel;
         repaint(graphBounds);
+    }
+
+    static int latencyTick = 0;
+    if (++latencyTick >= 12)
+    {
+        latencyTick = 0;
+        float ms = processorRef.getAlgorithmicLatencyMs();
+        latencyLabel.setText("LATENCY: " + juce::String(ms, 1) + "ms",
+                             juce::dontSendNotification);
+    }
+
+    {
+        float hoverDest = latencyHoverTarget ? 1.0f : 0.0f;
+        if (std::abs(hoverDest - latencyHoverProgress) > 0.002f)
+            latencyHoverProgress += (hoverDest - latencyHoverProgress) * 0.22f;
+
+        float hideDest = latencyHidden ? (latencyHoverTarget ? 0.0f : 1.0f) : 0.0f;
+        if (std::abs(hideDest - latencyHideProgress) > 0.002f)
+            latencyHideProgress += (hideDest - latencyHideProgress) * 0.09f;
+
+        if (!latencyBaseBounds.isEmpty())
+        {
+            float scale = 1.0f + 0.4f * latencyHoverProgress;
+            latencyLabel.setFont(conjusLAF.getRegularFont(latencyBaseFontSize * scale));
+
+            float slidePx = static_cast<float>(latencyBaseBounds.getHeight()) * 2.0f * latencyHideProgress;
+            int scaledH = static_cast<int>(latencyBaseBounds.getHeight() * scale);
+            int extra = scaledH - latencyBaseBounds.getHeight();
+            auto bounds = latencyBaseBounds.withY(latencyBaseBounds.getY() - extra)
+                                           .withHeight(scaledH)
+                                           .translated(0, static_cast<int>(slidePx));
+            latencyLabel.setBounds(bounds);
+        }
     }
 }
 
@@ -204,10 +248,10 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
     float scaleF = w / static_cast<float>(KnobDesign::defaultWidth);
 
     {
-        float gOuterLeft = 89.64f * scaleF;
-        float gOuterTop = 64.0f * scaleF;
-        float gOuterW = 466.0f * scaleF;
-        float gOuterH = 156.0f * scaleF;
+        float gOuterLeft = 267.246f * scaleF;
+        float gOuterTop = 54.5f * scaleF;
+        float gOuterW = 301.0f * scaleF;
+        float gOuterH = 189.0f * scaleF;
 
         float gPad = 14.0f * scaleF;
         float gLeft = gOuterLeft + gPad;
@@ -220,6 +264,34 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
         float gCy = gTop + gH * 0.5f;
 
         graphBounds = juce::Rectangle<float>(gOuterLeft, gOuterTop, gOuterW, gOuterH).toNearestInt().expanded(2);
+
+        if (titleLogoImage.isValid())
+        {
+            float logoX = 87.292f * scaleF;
+            float logoY = 104.0f * scaleF;
+            float logoW = 109.0f * scaleF;
+            float logoH = 71.0f * scaleF;
+            float logoRot = juce::degreesToRadians(-5.554f);
+
+            juce::AffineTransform logoXform = juce::AffineTransform::rotation(
+                logoRot, logoX + logoW * 0.5f, logoY + logoH * 0.5f);
+            g.saveState();
+            g.addTransform(logoXform);
+            g.setOpacity(1.0f);
+            g.drawImage(titleLogoImage,
+                        static_cast<int>(logoX), static_cast<int>(logoY),
+                        static_cast<int>(logoW), static_cast<int>(logoH),
+                        0, 0, titleLogoImage.getWidth(), titleLogoImage.getHeight());
+            g.restoreState();
+
+            float subtitleFontSize = 14.0f * scaleF;
+            g.setFont(conjusLAF.getBoldFont(subtitleFontSize));
+            g.setColour(KnobDesign::accentColour);
+            g.drawText("DISTORTION",
+                       64.546f * scaleF, 176.0f * scaleF,
+                       180.0f * scaleF, 16.0f * scaleF,
+                       juce::Justification::centred);
+        }
 
         float knobDiam = w * 0.216f;
         float graphStroke = knobDiam * KnobDesign::knobStrokeFrac;
@@ -243,37 +315,71 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
 
         float drive  = processorRef.getAPVTS().getRawParameterValue("drive")->load();
         float volume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
+        float level  = juce::jlimit(0.0f, 1.0f, processorRef.inputLevelRms.load());
 
-        juce::Path curve;
-        const int N = 300;
-        for (int i = 0; i <= N; ++i)
+        auto yForX = [&](float xVal) -> float {
+            return ((drive < 1e-6f) ? xVal
+                    : std::tanh(xVal * drive) / std::tanh(drive)) * volume;
+        };
+
+        auto buildSegment = [&](float t0, float t1, int steps) -> juce::Path {
+            juce::Path p;
+            if (steps < 1) steps = 1;
+            for (int i = 0; i <= steps; ++i)
+            {
+                float t = t0 + (t1 - t0) * static_cast<float>(i) / static_cast<float>(steps);
+                float xVal = -1.0f + 2.0f * t;
+                float px = gLeft + t * gW;
+                float py = gCy - yForX(xVal) * gH * 0.5f;
+                if (i == 0) p.startNewSubPath(px, py);
+                else p.lineTo(px, py);
+            }
+            return p;
+        };
+
+        const int totalN = 300;
+        juce::PathStrokeType stroke(graphStroke,
+            juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+
+        if (level < 0.001f)
         {
-            float t = static_cast<float>(i) / static_cast<float>(N);
-            float xVal = -1.0f + 2.0f * t;
-            float yVal = (drive < 1e-6f) ? xVal
-                         : std::tanh(xVal * drive) / std::tanh(drive);
-            yVal *= volume;
-            float px = gLeft + t * gW;
-            float py = gCy - yVal * gH * 0.5f;
-            if (i == 0) curve.startNewSubPath(px, py);
-            else curve.lineTo(px, py);
+            g.setColour(KnobDesign::accentColour);
+            g.strokePath(buildSegment(0.0f, 1.0f, totalN), stroke);
         }
+        else if (level >= 0.999f)
+        {
+            g.setColour(KnobDesign::accentHoverColour);
+            g.strokePath(buildSegment(0.0f, 1.0f, totalN), stroke);
+        }
+        else
+        {
+            float tLow  = (1.0f - level) * 0.5f;
+            float tHigh = (1.0f + level) * 0.5f;
+            int nLow  = juce::jmax(2, static_cast<int>(tLow * static_cast<float>(totalN)));
+            int nMid  = juce::jmax(2, static_cast<int>((tHigh - tLow) * static_cast<float>(totalN)));
+            int nHigh = juce::jmax(2, static_cast<int>((1.0f - tHigh) * static_cast<float>(totalN)));
 
-        g.setColour(KnobDesign::accentColour);
-        g.strokePath(curve, juce::PathStrokeType(graphStroke,
-            juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setColour(KnobDesign::accentColour);
+            g.strokePath(buildSegment(0.0f, tLow, nLow), stroke);
+
+            g.setColour(KnobDesign::accentHoverColour);
+            g.strokePath(buildSegment(tLow, tHigh, nMid), stroke);
+
+            g.setColour(KnobDesign::accentColour);
+            g.strokePath(buildSegment(tHigh, 1.0f, nHigh), stroke);
+        }
 
         float labelSize = 13.0f * scaleF;
         g.setFont(conjusLAF.getRegularFont(labelSize));
         g.setColour(KnobDesign::accentColour.darker(0.5f));
-        g.drawText("-1",   94.0f * scaleF, 149.0f * scaleF, 18.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
-        g.drawText("1",   533.0f * scaleF, 150.0f * scaleF, 18.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
-        g.drawText("1",   326.0f * scaleF,  71.0f * scaleF, 18.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
-        g.drawText("-1",  328.0f * scaleF, 199.0f * scaleF, 18.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
-        g.drawText("0.5",  423.0f * scaleF, 150.0f * scaleF, 20.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
-        g.drawText("-0.5", 194.0f * scaleF, 150.0f * scaleF, 32.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
-        g.drawText("0.5",  331.0f * scaleF, 103.0f * scaleF, 20.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
-        g.drawText("-0.5", 327.0f * scaleF, 167.0f * scaleF, 32.0f * scaleF, 12.0f * scaleF, juce::Justification::centred);
+        g.drawText("-1",   271.0f * scaleF, 158.0f * scaleF, 18.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
+        g.drawText("1",    546.0f * scaleF, 159.0f * scaleF, 18.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
+        g.drawText("-0.5", 333.0f * scaleF, 157.5f * scaleF, 32.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
+        g.drawText("0.5",  477.0f * scaleF, 159.0f * scaleF, 20.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
+        g.drawText("1",    396.0f * scaleF,  61.0f * scaleF, 18.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
+        g.drawText("-1",   423.0f * scaleF, 222.0f * scaleF, 18.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
+        g.drawText("0.5",  387.0f * scaleF, 101.0f * scaleF, 20.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
+        g.drawText("-0.5", 422.0f * scaleF, 182.0f * scaleF, 32.0f * scaleF, 13.0f * scaleF, juce::Justification::centred);
     }
 
 }
@@ -336,7 +442,7 @@ void WetDiaperAudioProcessorEditor::resized()
     volumeLabel.setFont(labelFont);
 
     const int labelH = static_cast<int>(KnobDesign::columnLabelHeight(w));
-    const int labelY = static_cast<int>(h * 0.4269f);
+    const int labelY = static_cast<int>(259.35f * (w / static_cast<float>(KnobDesign::defaultWidth)));
     driveLabel.setBounds(static_cast<int>(knobColX0), labelY,
                          static_cast<int>(knobColW), labelH);
     toneLabel.setBounds(static_cast<int>(knobColX1), labelY,
@@ -397,6 +503,24 @@ void WetDiaperAudioProcessorEditor::resized()
     float knobDiameter = juce::jmin(sliderBoundsW, knobAreaH) * 0.78f;
     float knobStrokeW = knobDiameter * KnobDesign::knobStrokeFrac;
     bypassButton.setRingStrokeWidth(knobStrokeW);
+
+    {
+        float sF = w / static_cast<float>(KnobDesign::defaultWidth);
+        float latencyFontSize = 11.0f * sF;
+        int lx = static_cast<int>(266.0f * sF);
+        int ly = static_cast<int>(548.0f * sF);
+        int lw = static_cast<int>(120.0f * sF);
+        int lh = static_cast<int>(22.0f * sF);
+        latencyLabel.setFont(conjusLAF.getRegularFont(latencyFontSize));
+        latencyLabel.setJustificationType(juce::Justification::centred);
+        latencyBaseBounds = { lx, ly, lw, lh };
+        latencyBaseFontSize = latencyFontSize;
+        latencyLabel.setBounds(latencyBaseBounds);
+
+        int hitPadX = static_cast<int>(latencyFontSize * 0.8f);
+        int hitPadY = lh;
+        latencyHitArea.setBounds(lx - hitPadX, ly - hitPadY, lw + 2 * hitPadX, lh + hitPadY);
+    }
 }
 
 void WetDiaperAudioProcessorEditor::startSnapAnimation(juce::Slider& slider, SliderAnimation& anim)

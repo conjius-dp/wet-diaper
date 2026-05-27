@@ -44,12 +44,24 @@ public:
         return dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter("bypass"));
     }
 
+    float getAlgorithmicLatencyMs() const
+    {
+        const double sr = drives[0].getSampleRate();
+        if (sr <= 0.0) return 0.0f;
+        return static_cast<float>(static_cast<double>(getLatencySamples()) / sr * 1000.0);
+    }
+
     std::atomic<int> editorWidth  { KnobDesign::defaultWidth };
     std::atomic<int> editorHeight { KnobDesign::defaultHeight };
+    std::atomic<float> inputLevelRms { 0.0f };
 
 private:
     juce::AudioProcessorValueTreeState apvts;
     Overdrive drives[2];
+
+    float rmsSum_ = 0.0f;
+    int rmsSampleCount_ = 0;
+    int rmsWindowSize_ = 735;
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 

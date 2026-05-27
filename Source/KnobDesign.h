@@ -24,6 +24,7 @@ namespace KnobDesign
     inline constexpr float labelFontScale    = 0.18f;
     inline constexpr float gainLabelScale    = 0.06f;
     inline constexpr float dbTextScale       = 0.06f;
+    inline constexpr float latencyTextScale  = 0.017f;
 
     inline constexpr int   defaultWidth      = 650;
     inline constexpr int   defaultHeight     = 570;
@@ -184,8 +185,7 @@ public:
         float tickStartR = radius * tickGap;
         float tickEndR = radius * (tickGap + tickLength);
 
-        float defaultNorm = (knobType == KnobType::Drive) ? 0.407f
-                           : (knobType == KnobType::Tone) ? 0.5f : 0.8f;
+        float defaultNorm = (knobType == KnobType::Drive) ? 0.407f : 0.5f;
 
         float tickAngles[3] = {
             juce::degreesToRadians(rotationStartAngle),
@@ -236,7 +236,7 @@ public:
         else
         {
             leftLabel  = "0";
-            midLabel   = "80";
+            midLabel   = "50";
             rightLabel = "100";
         }
 
