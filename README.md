@@ -20,16 +20,18 @@
   <a href="https://github.com/conjius-dp/wet-diaper/releases"><img src="https://img.shields.io/github/downloads/conjius-dp/wet-diaper/total?label=downloads&color=blue" alt="Total downloads"></a>
 </p>
 
-Distortion/overdrive effect. Soft-clip tanh waveshaping with adjustable tone filter and output volume. Drive from clean identity to hard clip.
+Distortion/overdrive with an editable bezier curve waveshaper. Double-click the graph to add points, drag to reshape. Symmetric or asymmetric curve editing.
 
 VST3 (macOS, Windows), AU + Standalone (macOS). Stereo in/out. Zero latency.
 
 ## Usage
 
-1. Set **Drive** for distortion amount (0 = clean, 100 = hard clip).
-2. Adjust **Tone** to shape the post-distortion frequency response.
-3. Set **Volume** to control the output level after waveshaping.
-4. Power button (top-right) hard-bypasses the plugin.
+- **Drive**: how hard the input hits the curve (0 = clean, 100 = hard clip).
+- **Graph**: double-click to add/remove points. Drag points and handles to reshape.
+- **Symmetric / Asymmetric**: mirror the curve or edit each half independently.
+- **Tone**: post-distortion frequency shaping.
+- **Volume**: output level.
+- **Power button** (top-right): hard bypass.
 
 ## Parameters
 
@@ -37,7 +39,8 @@ VST3 (macOS, Windows), AU + Standalone (macOS). Stereo in/out. Zero latency.
 |---|---|---|
 | Drive | 0 - 100 | 5.0 |
 | Tone | 0% - 100% | 50.0% |
-| Volume | 0% - 100% | 80.0% |
+| Volume | 0% - 100% | 50.0% |
+| Symmetric | on / off | on |
 | Bypass | on / off | off |
 
 ## Build
