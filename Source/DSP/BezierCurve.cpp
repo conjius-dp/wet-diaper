@@ -1,4 +1,5 @@
 #include "DSP/BezierCurve.h"
+#include <array>
 
 BezierCurve::BezierCurve() = default;
 
@@ -266,6 +267,64 @@ void BezierCurve::generateLUT(float* buffer) const
 
     buffer[0] = 0.0f;
     buffer[kLutSize - 1] = segs.back().y3;
+}
+
+static void getSortedActiveSlots(const BezierCurve::SlotValues& vals,
+                                  std::array<int, BezierCurve::SlotValues::kMaxSlots>& sorted,
+                                  int& count)
+{
+    count = 0;
+    for (int i = 0; i < BezierCurve::SlotValues::kMaxSlots; ++i)
+        if (vals.slots[i].on)
+            sorted[static_cast<size_t>(count++)] = i;
+
+    for (int i = 0; i < count - 1; ++i)
+        for (int j = i + 1; j < count; ++j)
+            if (vals.slots[sorted[static_cast<size_t>(j)]].x < vals.slots[sorted[static_cast<size_t>(i)]].x)
+                std::swap(sorted[static_cast<size_t>(i)], sorted[static_cast<size_t>(j)]);
+}
+
+int BezierCurve::SlotValues::curvePointToSlot(int curveIndex) const
+{
+    std::array<int, kMaxSlots> sorted{};
+    int count = 0;
+    getSortedActiveSlots(*this, sorted, count);
+    if (curveIndex < 0 || curveIndex >= count) return -1;
+    return sorted[static_cast<size_t>(curveIndex)];
+}
+
+int BezierCurve::SlotValues::slotToCurvePoint(int slotIndex) const
+{
+    if (slotIndex < 0 || slotIndex >= kMaxSlots || !slots[slotIndex].on) return -1;
+    std::array<int, kMaxSlots> sorted{};
+    int count = 0;
+    getSortedActiveSlots(*this, sorted, count);
+    for (int i = 0; i < count; ++i)
+        if (sorted[static_cast<size_t>(i)] == slotIndex)
+            return i;
+    return -1;
+}
+
+void BezierCurve::buildFromSlots(BezierCurve& curve, const SlotValues& vals)
+{
+    curve.reset();
+    curve.moveStartOutHandle(vals.startOutDx, vals.startOutDy);
+    curve.moveEndInHandle(vals.endInDx, vals.endInDy);
+
+    std::array<int, SlotValues::kMaxSlots> sorted{};
+    int count = 0;
+    getSortedActiveSlots(vals, sorted, count);
+
+    for (int i = 0; i < count; ++i)
+    {
+        auto& s = vals.slots[sorted[static_cast<size_t>(i)]];
+        int idx = curve.addPoint(s.x, s.y);
+        if (idx >= 0)
+        {
+            curve.moveInHandle(idx, s.inDx, s.inDy);
+            curve.moveOutHandle(idx, s.outDx, s.outDy);
+        }
+    }
 }
 
 float BezierCurve::lookupWithGain(float sample, float gain, const float* lut, int lutSize)

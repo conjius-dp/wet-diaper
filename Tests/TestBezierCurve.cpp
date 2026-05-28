@@ -53,15 +53,15 @@ public:
             expectEquals(curve.getNumPoints(), 0);
         }
 
-        beginTest("max 8 points enforced");
+        beginTest("max 5 points enforced");
         {
             BezierCurve curve;
-            for (int i = 1; i <= 8; ++i)
-                curve.addPoint(static_cast<float>(i) / 9.0f, 0.5f);
-            expectEquals(curve.getNumPoints(), 8);
+            for (int i = 1; i <= 5; ++i)
+                curve.addPoint(static_cast<float>(i) / 6.0f, 0.5f);
+            expectEquals(curve.getNumPoints(), 5);
             int overflow = curve.addPoint(0.95f, 0.5f);
             expectEquals(overflow, -1);
-            expectEquals(curve.getNumPoints(), 8);
+            expectEquals(curve.getNumPoints(), 5);
         }
 
         beginTest("remove point decreases count");
@@ -239,6 +239,117 @@ public:
             curve.moveEndInHandle(0.5f, 0.0f);
             auto h = curve.getEndInHandle();
             expect(h.dx <= 0.0f, "end in handle dx should be <= 0");
+        }
+
+        beginTest("buildFromSlots default produces identity");
+        {
+            BezierCurve::SlotValues vals;
+            BezierCurve curve;
+            BezierCurve::buildFromSlots(curve, vals);
+            expectEquals(curve.getNumPoints(), 0);
+            expectWithinAbsoluteError(curve.evaluate(0.5f), 0.5f, 0.001f);
+            auto sh = curve.getStartOutHandle();
+            expectWithinAbsoluteError(sh.dx, 1.0f / 3.0f, 0.001f);
+            expectWithinAbsoluteError(sh.dy, 1.0f / 3.0f, 0.001f);
+        }
+
+        beginTest("buildFromSlots one active slot");
+        {
+            BezierCurve::SlotValues vals;
+            vals.slots[2].on = true;
+            vals.slots[2].x = 0.4f;
+            vals.slots[2].y = 0.9f;
+            BezierCurve curve;
+            BezierCurve::buildFromSlots(curve, vals);
+            expectEquals(curve.getNumPoints(), 1);
+            expectWithinAbsoluteError(curve.getPoint(0).x, 0.4f, 0.001f);
+            expectWithinAbsoluteError(curve.getPoint(0).y, 0.9f, 0.001f);
+        }
+
+        beginTest("buildFromSlots multiple slots sorted by x");
+        {
+            BezierCurve::SlotValues vals;
+            vals.slots[3].on = true;
+            vals.slots[3].x = 0.7f;
+            vals.slots[3].y = 0.8f;
+            vals.slots[0].on = true;
+            vals.slots[0].x = 0.3f;
+            vals.slots[0].y = 0.5f;
+            BezierCurve curve;
+            BezierCurve::buildFromSlots(curve, vals);
+            expectEquals(curve.getNumPoints(), 2);
+            expect(curve.getPoint(0).x < curve.getPoint(1).x);
+            expectWithinAbsoluteError(curve.getPoint(0).x, 0.3f, 0.001f);
+            expectWithinAbsoluteError(curve.getPoint(1).x, 0.7f, 0.001f);
+        }
+
+        beginTest("buildFromSlots inactive slots skipped");
+        {
+            BezierCurve::SlotValues vals;
+            vals.slots[0].on = true;
+            vals.slots[0].x = 0.5f;
+            vals.slots[0].y = 0.8f;
+            vals.slots[1].on = false;
+            vals.slots[1].x = 0.3f;
+            vals.slots[1].y = 0.6f;
+            BezierCurve curve;
+            BezierCurve::buildFromSlots(curve, vals);
+            expectEquals(curve.getNumPoints(), 1);
+        }
+
+        beginTest("buildFromSlots preserves handles");
+        {
+            BezierCurve::SlotValues vals;
+            vals.startOutDx = 0.2f;
+            vals.startOutDy = 0.5f;
+            vals.endInDx = -0.2f;
+            vals.endInDy = -0.3f;
+            vals.slots[0].on = true;
+            vals.slots[0].x = 0.5f;
+            vals.slots[0].y = 0.7f;
+            vals.slots[0].inDx = -0.1f;
+            vals.slots[0].inDy = 0.05f;
+            vals.slots[0].outDx = 0.1f;
+            vals.slots[0].outDy = -0.05f;
+            BezierCurve curve;
+            BezierCurve::buildFromSlots(curve, vals);
+            auto sh = curve.getStartOutHandle();
+            expectWithinAbsoluteError(sh.dx, 0.2f, 0.001f);
+            expectWithinAbsoluteError(sh.dy, 0.5f, 0.001f);
+            auto eh = curve.getEndInHandle();
+            expectWithinAbsoluteError(eh.dx, -0.2f, 0.001f);
+            expectWithinAbsoluteError(eh.dy, -0.3f, 0.001f);
+            auto& pt = curve.getPoint(0);
+            expectWithinAbsoluteError(pt.in.dx, -0.1f, 0.001f);
+            expectWithinAbsoluteError(pt.in.dy, 0.05f, 0.001f);
+            expectWithinAbsoluteError(pt.out.dx, 0.1f, 0.001f);
+            expectWithinAbsoluteError(pt.out.dy, -0.05f, 0.001f);
+        }
+
+        beginTest("curvePointToSlot mapping");
+        {
+            BezierCurve::SlotValues vals;
+            vals.slots[3].on = true;
+            vals.slots[3].x = 0.7f;
+            vals.slots[3].y = 0.8f;
+            vals.slots[0].on = true;
+            vals.slots[0].x = 0.3f;
+            vals.slots[0].y = 0.5f;
+            expectEquals(vals.curvePointToSlot(0), 0);
+            expectEquals(vals.curvePointToSlot(1), 3);
+            expectEquals(vals.curvePointToSlot(2), -1);
+        }
+
+        beginTest("slotToCurvePoint mapping");
+        {
+            BezierCurve::SlotValues vals;
+            vals.slots[3].on = true;
+            vals.slots[3].x = 0.7f;
+            vals.slots[0].on = true;
+            vals.slots[0].x = 0.3f;
+            expectEquals(vals.slotToCurvePoint(0), 0);
+            expectEquals(vals.slotToCurvePoint(3), 1);
+            expectEquals(vals.slotToCurvePoint(1), -1);
         }
     }
 };

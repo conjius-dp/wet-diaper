@@ -200,6 +200,9 @@ void WetDiaperAudioProcessorEditor::timerCallback()
     float currentLevel  = processorRef.inputLevelRms.load();
     int curVer = processorRef.curveVersion_.load(std::memory_order_relaxed);
     bool curSym = processorRef.isSymmetric();
+    if (curVer != lastCurveVersion || curSym != lastSymmetric)
+        processorRef.updateDisplayCurves();
+
     if (std::abs(currentDrive - lastGraphDrive) > 0.001f
         || std::abs(currentVolume - lastGraphVolume) > 0.001f
         || std::abs(currentLevel - lastGraphLevel) > 0.001f
@@ -350,9 +353,8 @@ void WetDiaperAudioProcessorEditor::paint(juce::Graphics& g)
 
         float drive  = processorRef.getAPVTS().getRawParameterValue("drive")->load();
         float volume = processorRef.getAPVTS().getRawParameterValue("volume")->load();
-        float level  = juce::jlimit(0.0f, 1.0f, processorRef.inputLevelRms.load());
-
         float gain = (drive < 1e-6f) ? 1.0f : std::pow(100.0f, drive / 100.0f);
+        float level  = juce::jlimit(0.0f, 1.0f, processorRef.inputLevelRms.load());
         auto& curve = processorRef.getBezierCurve();
         auto& leftCurve = processorRef.getLeftBezierCurve();
         bool symmetric = processorRef.isSymmetric();
@@ -872,6 +874,26 @@ float WetDiaperAudioProcessorEditor::distToNearestCurvePoint(float bx, float by)
     return std::hypot(curvePx.x - pointPx.x, curvePx.y - pointPx.y);
 }
 
+void WetDiaperAudioProcessorEditor::beginGestures(const std::vector<juce::RangedAudioParameter*>& params)
+{
+    gestureParams_ = params;
+    for (auto* p : gestureParams_)
+        if (p) p->beginChangeGesture();
+}
+
+void WetDiaperAudioProcessorEditor::endGestures()
+{
+    for (auto* p : gestureParams_)
+        if (p) p->endChangeGesture();
+    gestureParams_.clear();
+}
+
+void WetDiaperAudioProcessorEditor::setParam(const juce::String& id, float value)
+{
+    if (auto* p = processorRef.getAPVTS().getParameter(id))
+        p->setValueNotifyingHost(p->convertTo0to1(value));
+}
+
 void WetDiaperAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
 {
     float mx = static_cast<float>(e.getPosition().x);
@@ -881,11 +903,53 @@ void WetDiaperAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
         return;
 
     auto hit = findBezierHit(mx, my);
-    if (hit.type != BezierHitType::None)
+    if (hit.type == BezierHitType::None)
+        return;
+
+    dragTarget_ = hit;
+    dragging_ = true;
+    dragPrefix_ = curvePrefix(hit.leftCurve);
+    dragSlot_ = -1;
+
+    auto& apvts = processorRef.getAPVTS();
+    std::vector<juce::RangedAudioParameter*> params;
+
+    if (hit.type == BezierHitType::Point || hit.type == BezierHitType::InHandle
+        || hit.type == BezierHitType::OutHandle)
     {
-        dragTarget_ = hit;
-        dragging_ = true;
+        auto vals = processorRef.readSlotValues(dragPrefix_);
+        dragSlot_ = vals.curvePointToSlot(hit.pointIndex);
+        if (dragSlot_ < 0) { dragging_ = false; return; }
+        auto s = juce::String(dragSlot_);
+
+        if (hit.type == BezierHitType::Point)
+        {
+            params.push_back(apvts.getParameter(dragPrefix_ + "p" + s + "_x"));
+            params.push_back(apvts.getParameter(dragPrefix_ + "p" + s + "_y"));
+        }
+        else if (hit.type == BezierHitType::InHandle)
+        {
+            params.push_back(apvts.getParameter(dragPrefix_ + "p" + s + "_idx"));
+            params.push_back(apvts.getParameter(dragPrefix_ + "p" + s + "_idy"));
+        }
+        else
+        {
+            params.push_back(apvts.getParameter(dragPrefix_ + "p" + s + "_odx"));
+            params.push_back(apvts.getParameter(dragPrefix_ + "p" + s + "_ody"));
+        }
     }
+    else if (hit.type == BezierHitType::StartOutHandle)
+    {
+        params.push_back(apvts.getParameter(dragPrefix_ + "sh_dx"));
+        params.push_back(apvts.getParameter(dragPrefix_ + "sh_dy"));
+    }
+    else if (hit.type == BezierHitType::EndInHandle)
+    {
+        params.push_back(apvts.getParameter(dragPrefix_ + "eh_dx"));
+        params.push_back(apvts.getParameter(dragPrefix_ + "eh_dy"));
+    }
+
+    beginGestures(params);
 }
 
 void WetDiaperAudioProcessorEditor::mouseDrag(const juce::MouseEvent& e)
@@ -902,52 +966,55 @@ void WetDiaperAudioProcessorEditor::mouseDrag(const juce::MouseEvent& e)
     float absBx = std::abs(bz.x) * gain;
     float absby = (bz.x < 0.0f) ? -rawY : rawY;
 
-    auto& targetCurve = dragTarget_.leftCurve ? processorRef.getLeftBezierCurve()
-                                              : processorRef.getBezierCurve();
+    auto s = juce::String(dragSlot_);
 
     switch (dragTarget_.type)
     {
         case BezierHitType::Point:
-            targetCurve.movePoint(dragTarget_.pointIndex, absBx, absby);
+            setParam(dragPrefix_ + "p" + s + "_x", absBx);
+            setParam(dragPrefix_ + "p" + s + "_y", absby);
             break;
         case BezierHitType::InHandle:
         {
-            auto& pt = targetCurve.getPoint(dragTarget_.pointIndex);
-            float dx = absBx - pt.x;
-            float dy = absby - pt.y;
-            targetCurve.moveInHandle(dragTarget_.pointIndex, dx, dy);
+            auto& curve = dragTarget_.leftCurve ? processorRef.getLeftBezierCurve()
+                                                : processorRef.getBezierCurve();
+            auto& pt = curve.getPoint(dragTarget_.pointIndex);
+            setParam(dragPrefix_ + "p" + s + "_idx", absBx - pt.x);
+            setParam(dragPrefix_ + "p" + s + "_idy", absby - pt.y);
             break;
         }
         case BezierHitType::OutHandle:
         {
-            auto& pt = targetCurve.getPoint(dragTarget_.pointIndex);
-            float dx = absBx - pt.x;
-            float dy = absby - pt.y;
-            targetCurve.moveOutHandle(dragTarget_.pointIndex, dx, dy);
+            auto& curve = dragTarget_.leftCurve ? processorRef.getLeftBezierCurve()
+                                                : processorRef.getBezierCurve();
+            auto& pt = curve.getPoint(dragTarget_.pointIndex);
+            setParam(dragPrefix_ + "p" + s + "_odx", absBx - pt.x);
+            setParam(dragPrefix_ + "p" + s + "_ody", absby - pt.y);
             break;
         }
         case BezierHitType::StartOutHandle:
-            targetCurve.moveStartOutHandle(absBx, absby);
+            setParam(dragPrefix_ + "sh_dx", absBx);
+            setParam(dragPrefix_ + "sh_dy", absby);
             break;
         case BezierHitType::EndInHandle:
-        {
-            float dx = absBx - 1.0f;
-            float dy = absby - 1.0f;
-            targetCurve.moveEndInHandle(dx, dy);
+            setParam(dragPrefix_ + "eh_dx", absBx - 1.0f);
+            setParam(dragPrefix_ + "eh_dy", absby - 1.0f);
             break;
-        }
         default:
             break;
     }
 
-    processorRef.rebuildLUT();
+    processorRef.updateDisplayCurves();
     repaint(graphBounds);
 }
 
 void WetDiaperAudioProcessorEditor::mouseUp(const juce::MouseEvent&)
 {
+    if (dragging_)
+        endGestures();
     dragging_ = false;
     dragTarget_ = {};
+    dragSlot_ = -1;
 }
 
 void WetDiaperAudioProcessorEditor::mouseDoubleClick(const juce::MouseEvent& e)
@@ -961,11 +1028,15 @@ void WetDiaperAudioProcessorEditor::mouseDoubleClick(const juce::MouseEvent& e)
     auto hit = findBezierHit(mx, my);
     if (hit.type == BezierHitType::Point)
     {
-        auto& targetCurve = hit.leftCurve ? processorRef.getLeftBezierCurve()
-                                          : processorRef.getBezierCurve();
-        targetCurve.removePoint(hit.pointIndex);
-        processorRef.rebuildLUT();
-        repaint(graphBounds);
+        auto prefix = curvePrefix(hit.leftCurve);
+        auto vals = processorRef.readSlotValues(prefix);
+        int slot = vals.curvePointToSlot(hit.pointIndex);
+        if (slot >= 0)
+        {
+            setParam(prefix + "p" + juce::String(slot) + "_on", 0.0f);
+            processorRef.updateDisplayCurves();
+            repaint(graphBounds);
+        }
         return;
     }
 
@@ -983,12 +1054,19 @@ void WetDiaperAudioProcessorEditor::mouseDoubleClick(const juce::MouseEvent& e)
         return;
 
     bool useLeft = !symmetric && bz.x < 0.0f;
-    auto& targetCurve = useLeft ? processorRef.getLeftBezierCurve()
-                                : processorRef.getBezierCurve();
-    int idx = targetCurve.addPoint(absBx, absby);
-    if (idx >= 0)
-    {
-        processorRef.rebuildLUT();
-        repaint(graphBounds);
-    }
+    auto prefix = curvePrefix(useLeft);
+    int slot = processorRef.findFreeSlot(prefix);
+    if (slot < 0) return;
+
+    auto s = juce::String(slot);
+    float defDx = std::min(absBx, 1.0f - absBx) / 3.0f;
+    setParam(prefix + "p" + s + "_on", 1.0f);
+    setParam(prefix + "p" + s + "_x", absBx);
+    setParam(prefix + "p" + s + "_y", absby);
+    setParam(prefix + "p" + s + "_idx", -defDx);
+    setParam(prefix + "p" + s + "_idy", 0.0f);
+    setParam(prefix + "p" + s + "_odx", defDx);
+    setParam(prefix + "p" + s + "_ody", 0.0f);
+    processorRef.updateDisplayCurves();
+    repaint(graphBounds);
 }

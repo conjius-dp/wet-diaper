@@ -1,20 +1,109 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+static void registerCurveListeners(juce::AudioProcessorValueTreeState& apvts,
+                                    juce::AudioProcessorValueTreeState::Listener* listener,
+                                    const juce::String& prefix)
+{
+    apvts.addParameterListener(prefix + "sh_dx", listener);
+    apvts.addParameterListener(prefix + "sh_dy", listener);
+    apvts.addParameterListener(prefix + "eh_dx", listener);
+    apvts.addParameterListener(prefix + "eh_dy", listener);
+    for (int i = 0; i < BezierCurve::SlotValues::kMaxSlots; ++i)
+    {
+        auto s = juce::String(i);
+        apvts.addParameterListener(prefix + "p" + s + "_on", listener);
+        apvts.addParameterListener(prefix + "p" + s + "_x", listener);
+        apvts.addParameterListener(prefix + "p" + s + "_y", listener);
+        apvts.addParameterListener(prefix + "p" + s + "_idx", listener);
+        apvts.addParameterListener(prefix + "p" + s + "_idy", listener);
+        apvts.addParameterListener(prefix + "p" + s + "_odx", listener);
+        apvts.addParameterListener(prefix + "p" + s + "_ody", listener);
+    }
+}
+
+static void removeCurveListeners(juce::AudioProcessorValueTreeState& apvts,
+                                  juce::AudioProcessorValueTreeState::Listener* listener,
+                                  const juce::String& prefix)
+{
+    apvts.removeParameterListener(prefix + "sh_dx", listener);
+    apvts.removeParameterListener(prefix + "sh_dy", listener);
+    apvts.removeParameterListener(prefix + "eh_dx", listener);
+    apvts.removeParameterListener(prefix + "eh_dy", listener);
+    for (int i = 0; i < BezierCurve::SlotValues::kMaxSlots; ++i)
+    {
+        auto s = juce::String(i);
+        apvts.removeParameterListener(prefix + "p" + s + "_on", listener);
+        apvts.removeParameterListener(prefix + "p" + s + "_x", listener);
+        apvts.removeParameterListener(prefix + "p" + s + "_y", listener);
+        apvts.removeParameterListener(prefix + "p" + s + "_idx", listener);
+        apvts.removeParameterListener(prefix + "p" + s + "_idy", listener);
+        apvts.removeParameterListener(prefix + "p" + s + "_odx", listener);
+        apvts.removeParameterListener(prefix + "p" + s + "_ody", listener);
+    }
+}
+
 WetDiaperAudioProcessor::WetDiaperAudioProcessor()
     : AudioProcessor(BusesProperties()
                          .withInput("Input", juce::AudioChannelSet::stereo(), true)
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "Parameters", createParameterLayout())
 {
+    registerCurveListeners(apvts, &curveParamListener_, "rc_");
+    registerCurveListeners(apvts, &curveParamListener_, "lc_");
+    updateDisplayCurves();
     rebuildLUT();
 }
 
-WetDiaperAudioProcessor::~WetDiaperAudioProcessor() {}
+WetDiaperAudioProcessor::~WetDiaperAudioProcessor()
+{
+    removeCurveListeners(apvts, &curveParamListener_, "rc_");
+    removeCurveListeners(apvts, &curveParamListener_, "lc_");
+}
+
+static void addCurveParams(std::vector<std::unique_ptr<juce::RangedAudioParameter>>& params,
+                           const juce::String& prefix, bool automatable)
+{
+    auto fid = [&](const juce::String& suffix) {
+        return juce::ParameterID(prefix + suffix, 1);
+    };
+    auto fa = juce::AudioParameterFloatAttributes().withAutomatable(automatable);
+    auto ba = juce::AudioParameterBoolAttributes().withAutomatable(automatable);
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("sh_dx"), prefix + "StartOut DX",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f), 1.0f / 3.0f, fa));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("sh_dy"), prefix + "StartOut DY",
+        juce::NormalisableRange<float>(-1.0f, 1.0f, 0.001f), 1.0f / 3.0f, fa));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("eh_dx"), prefix + "EndIn DX",
+        juce::NormalisableRange<float>(-1.0f, 0.0f, 0.001f), -1.0f / 3.0f, fa));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("eh_dy"), prefix + "EndIn DY",
+        juce::NormalisableRange<float>(-1.0f, 1.0f, 0.001f), -1.0f / 3.0f, fa));
+
+    for (int i = 0; i < BezierCurve::SlotValues::kMaxSlots; ++i)
+    {
+        auto s = juce::String(i);
+        params.push_back(std::make_unique<juce::AudioParameterBool>(fid("p" + s + "_on"), prefix + "P" + s + " On", false, ba));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("p" + s + "_x"), prefix + "P" + s + " X",
+            juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f), 0.5f, fa));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("p" + s + "_y"), prefix + "P" + s + " Y",
+            juce::NormalisableRange<float>(-1.0f, 1.0f, 0.001f), 0.5f, fa));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("p" + s + "_idx"), prefix + "P" + s + " InDX",
+            juce::NormalisableRange<float>(-1.0f, 0.0f, 0.001f), 0.0f, fa));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("p" + s + "_idy"), prefix + "P" + s + " InDY",
+            juce::NormalisableRange<float>(-1.0f, 1.0f, 0.001f), 0.0f, fa));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("p" + s + "_odx"), prefix + "P" + s + " OutDX",
+            juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f), 0.0f, fa));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(fid("p" + s + "_ody"), prefix + "P" + s + " OutDY",
+            juce::NormalisableRange<float>(-1.0f, 1.0f, 0.001f), 0.0f, fa));
+    }
+}
 
 juce::AudioProcessorValueTreeState::ParameterLayout WetDiaperAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+    // 5 main + 39 right curve = 44 automatable. All fit under Ableton's 64-param threshold.
+    // Left curve (39 more) would push to 83, so left curve is non-automatable.
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID("drive", 1), "Drive",
@@ -34,6 +123,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout WetDiaperAudioProcessor::cre
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID("asymmetric", 1), "Asymmetric", false));
 
+    addCurveParams(params, "rc_", true);
+    addCurveParams(params, "lc_", false);
+
     return { params.begin(), params.end() };
 }
 
@@ -52,9 +144,7 @@ void WetDiaperAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlo
 {
     for (auto& d : drives) d.prepare(sampleRate, samplesPerBlock);
     setLatencySamples(0);
-    rmsWindowSize_ = juce::jmax(1, static_cast<int>(sampleRate / 60.0));
-    rmsSum_ = 0.0f;
-    rmsSampleCount_ = 0;
+    peakDecay_ = std::pow(0.01f, 1.0f / static_cast<float>(sampleRate * 0.3));
 }
 
 void WetDiaperAudioProcessor::releaseResources()
@@ -95,16 +185,13 @@ void WetDiaperAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     {
         const float* in = buffer.getReadPointer(0);
+        float blockPeak = 0.0f;
         for (int i = 0; i < numSamples; ++i)
-        {
-            rmsSum_ += in[i] * in[i];
-            if (++rmsSampleCount_ >= rmsWindowSize_)
-            {
-                inputLevelRms.store(std::sqrt(rmsSum_ / static_cast<float>(rmsSampleCount_)));
-                rmsSum_ = 0.0f;
-                rmsSampleCount_ = 0;
-            }
-        }
+            blockPeak = std::max(blockPeak, std::abs(in[i]));
+
+        float prev = inputLevelRms.load(std::memory_order_relaxed);
+        float blockDecay = std::pow(peakDecay_, static_cast<float>(numSamples));
+        inputLevelRms.store(std::max(blockPeak, prev * blockDecay), std::memory_order_relaxed);
     }
 
     if (apvts.getRawParameterValue("bypass")->load() >= 0.5f)
@@ -117,6 +204,9 @@ void WetDiaperAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     const float drive  = apvts.getRawParameterValue("drive")->load();
     const float tone   = apvts.getRawParameterValue("tone")->load();
     const float volume = apvts.getRawParameterValue("volume")->load();
+
+    if (curveParamsDirty_.exchange(false, std::memory_order_acquire))
+        rebuildLUTFromParams();
 
     int readIdx = activeLutIndex_.load(std::memory_order_acquire);
     bool symmetric = apvts.getRawParameterValue("asymmetric")->load() < 0.5f;
@@ -141,6 +231,88 @@ juce::AudioProcessorEditor* WetDiaperAudioProcessor::createEditor()
 
 bool WetDiaperAudioProcessor::hasEditor() const { return true; }
 
+BezierCurve::SlotValues WetDiaperAudioProcessor::readSlotValues(const juce::String& prefix) const
+{
+    BezierCurve::SlotValues v;
+    v.startOutDx = apvts.getRawParameterValue(prefix + "sh_dx")->load();
+    v.startOutDy = apvts.getRawParameterValue(prefix + "sh_dy")->load();
+    v.endInDx    = apvts.getRawParameterValue(prefix + "eh_dx")->load();
+    v.endInDy    = apvts.getRawParameterValue(prefix + "eh_dy")->load();
+    for (int i = 0; i < BezierCurve::SlotValues::kMaxSlots; ++i)
+    {
+        auto s = juce::String(i);
+        auto& slot = v.slots[i];
+        slot.on   = apvts.getRawParameterValue(prefix + "p" + s + "_on")->load() >= 0.5f;
+        slot.x    = apvts.getRawParameterValue(prefix + "p" + s + "_x")->load();
+        slot.y    = apvts.getRawParameterValue(prefix + "p" + s + "_y")->load();
+        slot.inDx = apvts.getRawParameterValue(prefix + "p" + s + "_idx")->load();
+        slot.inDy = apvts.getRawParameterValue(prefix + "p" + s + "_idy")->load();
+        slot.outDx = apvts.getRawParameterValue(prefix + "p" + s + "_odx")->load();
+        slot.outDy = apvts.getRawParameterValue(prefix + "p" + s + "_ody")->load();
+    }
+    return v;
+}
+
+void WetDiaperAudioProcessor::writeSlotValues(const juce::String& prefix,
+                                               const BezierCurve::SlotValues& vals)
+{
+    auto set = [&](const juce::String& id, float v) {
+        if (auto* p = apvts.getParameter(id))
+            p->setValueNotifyingHost(p->convertTo0to1(v));
+    };
+    set(prefix + "sh_dx", vals.startOutDx);
+    set(prefix + "sh_dy", vals.startOutDy);
+    set(prefix + "eh_dx", vals.endInDx);
+    set(prefix + "eh_dy", vals.endInDy);
+    for (int i = 0; i < BezierCurve::SlotValues::kMaxSlots; ++i)
+    {
+        auto s = juce::String(i);
+        auto& slot = vals.slots[i];
+        set(prefix + "p" + s + "_on", slot.on ? 1.0f : 0.0f);
+        set(prefix + "p" + s + "_x", slot.x);
+        set(prefix + "p" + s + "_y", slot.y);
+        set(prefix + "p" + s + "_idx", slot.inDx);
+        set(prefix + "p" + s + "_idy", slot.inDy);
+        set(prefix + "p" + s + "_odx", slot.outDx);
+        set(prefix + "p" + s + "_ody", slot.outDy);
+    }
+}
+
+int WetDiaperAudioProcessor::findFreeSlot(const juce::String& prefix) const
+{
+    for (int i = 0; i < BezierCurve::SlotValues::kMaxSlots; ++i)
+    {
+        auto s = juce::String(i);
+        if (apvts.getRawParameterValue(prefix + "p" + s + "_on")->load() < 0.5f)
+            return i;
+    }
+    return -1;
+}
+
+void WetDiaperAudioProcessor::updateDisplayCurves()
+{
+    auto rcVals = readSlotValues("rc_");
+    BezierCurve::buildFromSlots(bezierCurve_, rcVals);
+    auto lcVals = readSlotValues("lc_");
+    BezierCurve::buildFromSlots(leftBezierCurve_, lcVals);
+}
+
+void WetDiaperAudioProcessor::rebuildLUTFromParams()
+{
+    BezierCurve tempRC, tempLC;
+    auto rcVals = readSlotValues("rc_");
+    BezierCurve::buildFromSlots(tempRC, rcVals);
+    auto lcVals = readSlotValues("lc_");
+    BezierCurve::buildFromSlots(tempLC, lcVals);
+
+    int current = activeLutIndex_.load(std::memory_order_acquire);
+    int writeIdx = 1 - current;
+    tempRC.generateLUT(lutBuffers_[writeIdx]);
+    tempLC.generateLUT(leftLutBuffers_[writeIdx]);
+    activeLutIndex_.store(writeIdx, std::memory_order_release);
+    curveVersion_.fetch_add(1, std::memory_order_relaxed);
+}
+
 void WetDiaperAudioProcessor::rebuildLUT()
 {
     int current = activeLutIndex_.load(std::memory_order_acquire);
@@ -151,80 +323,48 @@ void WetDiaperAudioProcessor::rebuildLUT()
     curveVersion_.fetch_add(1, std::memory_order_relaxed);
 }
 
-static juce::ValueTree serializeCurve(const BezierCurve& curve, const juce::Identifier& name)
+static BezierCurve::SlotValues legacyTreeToSlots(const juce::ValueTree& child)
 {
-    juce::ValueTree tree(name);
-
-    juce::ValueTree startH("StartHandle");
-    auto sh = curve.getStartOutHandle();
-    startH.setProperty("outDx", sh.dx, nullptr);
-    startH.setProperty("outDy", sh.dy, nullptr);
-    tree.addChild(startH, -1, nullptr);
-
-    for (int i = 0; i < curve.getNumPoints(); ++i)
-    {
-        auto& pt = curve.getPoint(i);
-        juce::ValueTree ptTree("Point");
-        ptTree.setProperty("x", pt.x, nullptr);
-        ptTree.setProperty("y", pt.y, nullptr);
-        ptTree.setProperty("inDx", pt.in.dx, nullptr);
-        ptTree.setProperty("inDy", pt.in.dy, nullptr);
-        ptTree.setProperty("outDx", pt.out.dx, nullptr);
-        ptTree.setProperty("outDy", pt.out.dy, nullptr);
-        tree.addChild(ptTree, -1, nullptr);
-    }
-
-    juce::ValueTree endH("EndHandle");
-    auto eh = curve.getEndInHandle();
-    endH.setProperty("inDx", eh.dx, nullptr);
-    endH.setProperty("inDy", eh.dy, nullptr);
-    tree.addChild(endH, -1, nullptr);
-
-    return tree;
-}
-
-static void deserializeCurve(BezierCurve& curve, const juce::ValueTree& child)
-{
-    curve.reset();
+    BezierCurve::SlotValues v;
 
     auto startH = child.getChildWithName("StartHandle");
     if (startH.isValid())
-        curve.moveStartOutHandle(
-            static_cast<float>(startH.getProperty("outDx", 1.0f / 3.0f)),
-            static_cast<float>(startH.getProperty("outDy", 1.0f / 3.0f)));
+    {
+        v.startOutDx = static_cast<float>(startH.getProperty("outDx", 1.0f / 3.0f));
+        v.startOutDy = static_cast<float>(startH.getProperty("outDy", 1.0f / 3.0f));
+    }
 
     auto endH = child.getChildWithName("EndHandle");
     if (endH.isValid())
-        curve.moveEndInHandle(
-            static_cast<float>(endH.getProperty("inDx", -1.0f / 3.0f)),
-            static_cast<float>(endH.getProperty("inDy", -1.0f / 3.0f)));
+    {
+        v.endInDx = static_cast<float>(endH.getProperty("inDx", -1.0f / 3.0f));
+        v.endInDy = static_cast<float>(endH.getProperty("inDy", -1.0f / 3.0f));
+    }
 
-    for (int i = 0; i < child.getNumChildren(); ++i)
+    int slotIdx = 0;
+    for (int i = 0; i < child.getNumChildren() && slotIdx < BezierCurve::SlotValues::kMaxSlots; ++i)
     {
         auto ch = child.getChild(i);
         if (ch.hasType("Point"))
         {
-            float px = static_cast<float>(ch.getProperty("x", 0.5f));
-            float py = static_cast<float>(ch.getProperty("y", 0.5f));
-            int idx = curve.addPoint(px, py);
-            if (idx >= 0)
-            {
-                curve.moveInHandle(idx,
-                    static_cast<float>(ch.getProperty("inDx", 0.0f)),
-                    static_cast<float>(ch.getProperty("inDy", 0.0f)));
-                curve.moveOutHandle(idx,
-                    static_cast<float>(ch.getProperty("outDx", 0.0f)),
-                    static_cast<float>(ch.getProperty("outDy", 0.0f)));
-            }
+            auto& slot = v.slots[slotIdx];
+            slot.on = true;
+            slot.x = static_cast<float>(ch.getProperty("x", 0.5f));
+            slot.y = static_cast<float>(ch.getProperty("y", 0.5f));
+            slot.inDx = static_cast<float>(ch.getProperty("inDx", 0.0f));
+            slot.inDy = static_cast<float>(ch.getProperty("inDy", 0.0f));
+            slot.outDx = static_cast<float>(ch.getProperty("outDx", 0.0f));
+            slot.outDy = static_cast<float>(ch.getProperty("outDy", 0.0f));
+            ++slotIdx;
         }
     }
+
+    return v;
 }
 
 void WetDiaperAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
-    state.addChild(serializeCurve(bezierCurve_, "BezierCurve"), -1, nullptr);
-    state.addChild(serializeCurve(leftBezierCurve_, "LeftBezierCurve"), -1, nullptr);
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -236,22 +376,32 @@ void WetDiaperAudioProcessor::setStateInformation(const void* data, int sizeInBy
     {
         auto tree = juce::ValueTree::fromXml(*xml);
 
+        BezierCurve::SlotValues legacyRC, legacyLC;
+        bool hasLegacyRC = false, hasLegacyLC = false;
+
         auto bezierChild = tree.getChildWithName("BezierCurve");
         if (bezierChild.isValid())
         {
-            deserializeCurve(bezierCurve_, bezierChild);
+            legacyRC = legacyTreeToSlots(bezierChild);
+            hasLegacyRC = true;
             tree.removeChild(bezierChild, nullptr);
         }
 
         auto leftChild = tree.getChildWithName("LeftBezierCurve");
         if (leftChild.isValid())
         {
-            deserializeCurve(leftBezierCurve_, leftChild);
+            legacyLC = legacyTreeToSlots(leftChild);
+            hasLegacyLC = true;
             tree.removeChild(leftChild, nullptr);
         }
 
-        rebuildLUT();
         apvts.replaceState(tree);
+
+        if (hasLegacyRC) writeSlotValues("rc_", legacyRC);
+        if (hasLegacyLC) writeSlotValues("lc_", legacyLC);
+
+        updateDisplayCurves();
+        rebuildLUT();
     }
 }
 

@@ -156,6 +156,14 @@ private:
 
     BezierHit dragTarget_;
     bool dragging_ = false;
+    juce::String dragPrefix_;
+    int dragSlot_ = -1;
+    std::vector<juce::RangedAudioParameter*> gestureParams_;
+
+    void beginGestures(const std::vector<juce::RangedAudioParameter*>& params);
+    void endGestures();
+    void setParam(const juce::String& id, float value);
+    juce::String curvePrefix(bool leftCurve) const { return leftCurve ? "lc_" : "rc_"; }
 
     BezierHit findBezierHit(float mx, float my) const;
     juce::Point<float> bezierToPixel(float bx, float by) const;

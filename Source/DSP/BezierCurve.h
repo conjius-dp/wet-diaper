@@ -22,7 +22,7 @@ class BezierCurve
 {
 public:
     static constexpr int kLutSize = 2048;
-    static constexpr int kMaxPoints = 8;
+    static constexpr int kMaxPoints = 5;
     static constexpr float kMinGap = 0.005f;
 
     BezierCurve();
@@ -44,6 +44,34 @@ public:
     void generateLUT(float* buffer) const;
 
     static float lookupWithGain(float sample, float gain, const float* lut, int lutSize);
+
+    struct SlotValues
+    {
+        static constexpr int kMaxSlots = 5;
+
+        float startOutDx = 1.0f / 3.0f;
+        float startOutDy = 1.0f / 3.0f;
+        float endInDx = -1.0f / 3.0f;
+        float endInDy = -1.0f / 3.0f;
+
+        struct Slot
+        {
+            bool on = false;
+            float x = 0.5f;
+            float y = 0.5f;
+            float inDx = 0.0f;
+            float inDy = 0.0f;
+            float outDx = 0.0f;
+            float outDy = 0.0f;
+        };
+
+        Slot slots[kMaxSlots]{};
+
+        int curvePointToSlot(int curveIndex) const;
+        int slotToCurvePoint(int slotIndex) const;
+    };
+
+    static void buildFromSlots(BezierCurve& curve, const SlotValues& vals);
 
     const std::vector<BezierPoint>& getPoints() const { return points_; }
     void setStartOutHandle(BezierHandle h) { startOut_ = h; }

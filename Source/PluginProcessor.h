@@ -56,13 +56,16 @@ public:
     std::atomic<int> editorHeight { KnobDesign::defaultHeight };
     std::atomic<float> inputLevelRms { 0.0f };
 
-    BezierCurve& getBezierCurve() { return bezierCurve_; }
     const BezierCurve& getBezierCurve() const { return bezierCurve_; }
-    BezierCurve& getLeftBezierCurve() { return leftBezierCurve_; }
     const BezierCurve& getLeftBezierCurve() const { return leftBezierCurve_; }
     void rebuildLUT();
     bool isSymmetric() const { return apvts.getRawParameterValue("asymmetric")->load() < 0.5f; }
     std::atomic<int> curveVersion_ { 0 };
+
+    BezierCurve::SlotValues readSlotValues(const juce::String& prefix) const;
+    void writeSlotValues(const juce::String& prefix, const BezierCurve::SlotValues& vals);
+    int findFreeSlot(const juce::String& prefix) const;
+    void updateDisplayCurves();
 
 private:
     juce::AudioProcessorValueTreeState apvts;
@@ -72,10 +75,19 @@ private:
     float lutBuffers_[2][BezierCurve::kLutSize]{};
     float leftLutBuffers_[2][BezierCurve::kLutSize]{};
     std::atomic<int> activeLutIndex_ { 0 };
+    std::atomic<bool> curveParamsDirty_ { false };
 
-    float rmsSum_ = 0.0f;
-    int rmsSampleCount_ = 0;
-    int rmsWindowSize_ = 735;
+    float peakDecay_ = 0.9999f;
+
+    void rebuildLUTFromParams();
+
+    struct CurveParamListener : juce::AudioProcessorValueTreeState::Listener
+    {
+        std::atomic<bool>& dirty;
+        explicit CurveParamListener(std::atomic<bool>& d) : dirty(d) {}
+        void parameterChanged(const juce::String&, float) override { dirty.store(true, std::memory_order_release); }
+    };
+    CurveParamListener curveParamListener_ { curveParamsDirty_ };
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
